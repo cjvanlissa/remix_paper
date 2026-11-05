@@ -3,6 +3,11 @@ packagenames <- c('metamixture', 'OpenMx', 'tidySEM', 'OpenMx')
 
 lapply(packagenames, library, character.only = TRUE)
 
+outdir <- "simulation"
+dir.create(outdir)
+f <- list.files(outdir, full.names = TRUE)
+file.remove(f)
+
 # Factorial design
 hyper_parameters <- list(
   reps = 1:100,
@@ -42,27 +47,32 @@ registerDoSNOW(cl)
 # summarydata <- summarydata[sample.int(nrow(summarydata), length(cl), replace = FALSE), ]
 f <- list.files("paper/output", full.names = TRUE)
 file.remove(f)
-saveRDS(summarydata, file = "paper/summarydata.RData")
-write(as.character(Sys.time()), file = "paper/output/time.log", append = TRUE)
+saveRDS(summarydata, file = file.path(outdir, "summarydata.RData"))
+write(as.character(Sys.time()), file = file.path(outdir, "time.log"), append = TRUE)
 max_classes <- max(summarydata$classes)+1L
 foreach(rownum = 1:nrow(summarydata), .packages = packagenames, .errorhandling = "remove", .final = function(x) NULL) %dopar% {
   # rownum <- sample.int(nrow(summarydata), 1L)
   # summarydata[rownum, -ncol(summarydata)]
-
-  .Random.seed <- summarydata$seed[rownum][[1]]
+  assign(".Random.seed", summarydata$seed[[rownum]], envir = .GlobalEnv)
   # create dataframe for each group
   df <- with(as.list(summarydata[rownum, ]), {
     metamixture::sim_remix_fixed_tau(k = k, classes = classes, p_ratio = p_ratio, vi_range = c(.001, vi), es = es)
   })
-  true_k <- length(unique(df$C))
-  true_pi <- sum(df$C==1)/nrow(df)
+  true_k <- summarydata$classes[rownum]
+  true_pi <- summarydata$p_ratio[rownum] / (summarydata$p_ratio[rownum] + true_k - 1L)
+  # Initialize all outputs
+  time <- m2ll <- ent <- NA_real_
+  aic <- bic <- icl <- pmc <- cv <- NA_integer_
+  res_mu <- res_tau <- res_pi <- NA_real_
+  ci_mu <- ci_tau_wald <- ci_tau_profile <- ci_pi <- c(NA_real_, NA_real_)
+  valid <- integer(0)
 
   # OPENMX
   mx_try <- try({
     tstart <- Sys.time()
     res_mx <- lapply(
       seq_len(max_classes),
-      metamixture:::remix,
+      metamixture::remix,
       yi = df$yi,
       vi = df$vi,
       mu = "varying",
@@ -73,10 +83,7 @@ foreach(rownum = 1:nrow(summarydata), .packages = packagenames, .errorhandling =
       difftime(Sys.time(), tstart, units = "secs")
     )
 
-    conv <- sapply(
-      res_mx,
-      function(x) metamixture:::mx_convergence(x)$checks_pass
-    )
+    conv <- sapply(res_mx, function(x) tidySEM::mx_convergence(x, check = c("convergence", "fit"))$checks_pass)
 
     valid <- seq_len(sum(cumprod(conv)))
 
@@ -115,14 +122,12 @@ foreach(rownum = 1:nrow(summarydata), .packages = packagenames, .errorhandling =
         cv <- 1L
       }
 
-    } else {
-      cv <- pmc <- aic <- bic <- icl <- NA
     }
 
     # Parameter estimates and coverage for the true model
     if (true_k %in% valid) {
       m2ll <- res_mx[[true_k]]@output$Minus2LogLikelihood
-      cp <- metamixture:::class_prob_individual_remix(model = res_mx[[true_k]])
+      cp <- tidySEM:::extract_postprob(res_mx[[true_k]])
       ent <- metamixture:::entropy(cp)
       mus <- res_mx[[true_k]]@matrices$M$values[1, ]
       min_mu <- which.min(abs(mus))
@@ -136,30 +141,15 @@ foreach(rownum = 1:nrow(summarydata), .packages = packagenames, .errorhandling =
         ci_pi <- res_pi +
             c(-1.96, 1.96) *
             OpenMx::mxSE("weights", res_mx[[true_k]], silent = TRUE)[1, min_mu]
-      } else {
-        res_pi <- ci_pi <- NA
       }
       res_tau <- res_mx[[true_k]]@matrices$S$values[1, 1]
       ci_tau_wald <- res_mx[[true_k]]$S$values[1,1]+ c(-1.96, 1.96)*res_mx[[true_k]]$output$standardErrors["tau2", 1]
       ci_tau_profile <- res_mx[[true_k]]$output$confidenceIntervals["tau2", c(1,3)]
-    } else {
-      m2ll <- NA
-      ci_mu <- ci_tau_profile <- ci_tau_wald <- ci_pi <- NA
-      res_mu <- res_tau <- res_pi <- NA
     }
-
   }, silent = TRUE)
 
 
-  if (inherits(mx_try, "try-error")) {
-    time <- m2ll <- NA
-    cv <- aic <- bic <- icl <- pmc <- NA_real_
-    ci_mu <- ci_tau_profile <- ci_tau_wald <- ci_pi <- NA
-    res_mu <- res_tau <- res_pi <- NA
-    valid <- NA
-  }
-
-
+  # Exactly one row per replication
   out <- data.frame(
     rownum = summarydata$rownum[rownum],
     true_pi = true_pi,
@@ -167,23 +157,35 @@ foreach(rownum = 1:nrow(summarydata), .packages = packagenames, .errorhandling =
     valid = length(valid),
     m2ll = m2ll,
     ent = ent,
+
     aic = aic,
     bic = bic,
     icl = icl,
     pmc = pmc,
     cv = cv,
+
     time = time,
+
     res_mu = res_mu,
     res_tau = res_tau,
     res_pi = res_pi,
-    ci_mu = ci_mu,
-    ci_tau_wald = ci_tau_wald,
-    ci_tau_profile = ci_tau_profile,
-    ci_pi = ci_pi
+
+    ci_mu1 = ci_mu[1],
+    ci_mu2 = ci_mu[2],
+
+    ci_tau_wald1 = ci_tau_wald[1],
+    ci_tau_wald2 = ci_tau_wald[2],
+
+    ci_tau_profile1 = ci_tau_profile[1],
+    ci_tau_profile2 = ci_tau_profile[2],
+
+    ci_pi1 = ci_pi[1],
+    ci_pi2 = ci_pi[2]
   )
-  saveRDS(out, file = paste0("paper/output/out_", rownum, ".rds"), compress = FALSE)
+  stopifnot(nrow(out) == 1L)
+  saveRDS(out, file = file.path(outdir, paste0("out_", rownum, ".rds")), compress = FALSE)
 }
-write(as.character(Sys.time()), file = "paper/output/time.log", append = TRUE)
+write(as.character(Sys.time()), file = file.path(outdir, "time.log"), append = TRUE)
 #Close cluster
 stopCluster(cl)
 rm(cl)
@@ -194,25 +196,20 @@ rm(cl)
 # Read files --------------------------------------------------------------
 library(data.table)
 
-res <- as.data.table(readRDS(list.files(path = "paper", pattern = "summarydata", full.names = TRUE)))
+res <- as.data.table(readRDS(list.files(path = outdir, pattern = "summarydata", full.names = TRUE)))
 
-
-f <- list.files("paper/output", pattern = "\\.rds", full.names = TRUE)
+f <- list.files(outdir, pattern = "^out_[0-9]+\\.rds$", full.names = TRUE)
 tab <- lapply(f, readRDS)
-tab <- lapply(tab, function(x){
-  c(unlist(x[1, c("rownum", "true_pi", "valid", "m2ll", "ent", "aic", "bic",
-    "icl", "pmc", "cv", "time", "res_mu", "res_tau", "res_pi"), drop = T]),
-    unlist(x[, c("ci_mu",
-                 "ci_tau_wald", "ci_tau_profile", "ci_pi")]))
-})
+# tab <- lapply(tab, function(x){
+#   c(unlist(x[1, c("rownum", "true_pi", "valid", "m2ll", "ent", "aic", "bic",
+#     "icl", "pmc", "cv", "time", "res_mu", "res_tau", "res_pi"), drop = T]),
+#     unlist(x[, c("ci_mu",
+#                  "ci_tau_wald", "ci_tau_profile", "ci_pi")]))
+# })
 tab <- as.data.table(do.call(rbind, tab))
 setorderv(tab, cols = c("rownum"), order=1L, na.last=FALSE)
 setorderv(res, cols = c("rownum"), order=1L, na.last=FALSE)
-if(!all(res$rownum == tab$rownum)){
-  c(1:nrow(res))[!c(1:nrow(res)) %in% unique(tab$rownum)]
-  stop()
-}
-merged <- cbind(res, tab)
+merged <- merge(res, tab, by = "rownum", all.x = TRUE, sort = FALSE)
 
-saveRDS(merged, paste0("paper/sim_results_", Sys.Date(), ".RData"))
+saveRDS(merged, file.path(outdir, paste0("sim_results_", Sys.Date(), ".RData")))
 

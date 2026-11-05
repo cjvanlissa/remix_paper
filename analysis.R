@@ -1,20 +1,19 @@
 library(data.table)
 library(ggplot2)
 
-input <- "paper/results/sim_results_2026-11-02.RData"
-outdir <- 'paper/results'
+outdir <- "simulation"
 ignore <- c("reps", "rownum", "seed", "true_pi")
 factors <- c('k', 'classes', 'vi', 'es', 'p_ratio')
 enum <- c('aic', 'bic', 'icl', 'pmc', 'cv')
 pars <- c('mu', 'tau', 'pi')
 true_tau = 1
 
-dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 outfile <- file.path(outdir, "output.txt")
-f <- list.files(outdir, full.names = T)
-file.remove(f)
 
-dat <- as.data.table(readRDS(input))
+f <- list.files(outdir, pattern = "^sim_results_", full.names = TRUE)
+f <- f[which.max(sapply(f, function(x) file.info(x)$mtime))]
+
+dat <- as.data.table(readRDS(file.path(outdir, f)))
 setnames(dat, make.unique(names(dat)))
 if ('rownum.1' %in% names(dat)) dat[, rownum.1 := NULL]
 dat[, (ignore) := NULL]
@@ -54,16 +53,11 @@ for (method in ci_methods) {
 # Coverage for tau
 prop.table(table(dat$cov_tau_wald))
 prop.table(table(dat$cov_tau_profile))
-dat[, cov_tau_wald := NULL]
-setnames(dat, "cov_tau_profile", "cov_tau")
+dat[, (grep("wald", names(dat), value = TRUE)) := NULL]
+setnames(dat, grep("profile", names(dat), value = TRUE), gsub("_profile", "", grep("profile", names(dat), value = TRUE)))
 
 # Check convergence
 conv_tab <- prop.table(table(dat$valid))
-
-cat("In ", worcs::report(sum(dat$valid >= dat$classes)/nrow(dat), equals = F), " percent of replications, all models up to the true model converged.\n", worcs::report(sum(conv_tab[-length(conv_tab)]), equals = F), " percent of replications had one model or more that did not converge.\n", file = outfile, sep = "")
-# summary(lm(as.formula(paste0("time ~ ", paste0(fac, collapse = "+"))), data = dat))
-#
-# cat("In ", worcs::report(sum(dat$valid >= dat$classes)/nrow(dat), equals = F), " percent of replications, all models up to the true model converged.\n", worcs::report(sum(conv_tab[-length(conv_tab)]), equals = F), " percent of replications had one model or more that did not converge.\n", file = outfile)
 
 dat[, paste0("bias_abs_", pars) := lapply(.SD, abs), .SDcols = paste0("bias_", pars)]
 dat[, paste0("acc_", enum) := lapply(.SD, function(x) x == classes), .SDcols = enum]
@@ -71,7 +65,6 @@ dat[, paste0("over_", enum) := lapply(.SD, function(x) x > classes), .SDcols = e
 dat[, paste0("under_", enum) := lapply(.SD, function(x) x < classes), .SDcols = enum]
 
 dat[, (factors) := lapply(.SD, function(v) ordered(v, levels = unique(v)[order(as.numeric(unique(v)))])), .SDcols = factors]
-#lapply(factors, function(v)levels(dat[[v]]))
 
 
 cols <- setdiff(names(dat), c(ignore, factors))
