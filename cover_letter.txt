@@ -1,0 +1,16 @@
+To whom it may concern,
+
+Attached is my manuscript entitled: "", to be considered for publication as a **Research Article** (7349 words) in Research Synthesis Methods.
+
+Capturing effect size heterogeneity is a key challenge in meta-analysis.
+The common assumption that heterogeneity is normally distributed often falls short; sometimes, because the population is actually composed of multiple unobserved subgroups.
+Finite mixture models can capture these unobserved sources of heterogeneity.
+I introduce and validate open source software for estimating random-effects mixture, or "remix" meta-analyses.
+Implemented in `OpenMx`, these structural equation models can be fully customized and further extended.
+Results show that the method is fast and has low bias, but confidence interval coverage is below nominal levels,
+and class enumeration remains challenging - which are known limitations of LCA.
+
+This work is not under consideration for publication elsewhere.
+
+Yours sincerely,
+Caspar van Lissa (corresponding autor)

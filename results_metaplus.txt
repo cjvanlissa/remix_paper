@@ -1,0 +1,7 @@
+We conducted a simulation study with  15600 replications. Simulation conditions were  list(reps = 1:100, k = c(20, 50, 100, 300), classes = 2L, vi = c(0.001,  0.01, 0.1), tau2_ratio = c(2, 4, 6), p_ratio = c(1, 1.5)) , chosen to align with the assumptions of metaplus.
+
+In  85.71 % of replications, the remix model had a lower minus 2 log likelihood than the metaplus model, indicating that it found a better solution.
+
+The difference in bias between the two methods was small for all parameters: mu: -0.01 tau: -0.04 pi: -0.02
+
+The methods had near-identical confidence interval coverage for mu, but metaplus did not return confidence intervals for tau2 or pi in any replication. While remix has the advantage of yielding confidence intervals, note that coverage was below nominal levels for all parameters. cov_mu_mx: 0.91 cov_tau_mx: 0.69 cov_pi_mx: 0.74 cov_mu_mp: 0.92 cov_tau_mp: NaN cov_pi_mp: NaN

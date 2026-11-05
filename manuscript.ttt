@@ -1,0 +1,135 @@
+\begin{table*}[hbt]
+\ifnextchar[{\eatarg}{}
+
+
+\caption{\label{tab:tabmulticol}Example of multicollinear moderators.}
+\centering
+\begin{tabular}[t]{|>{}l|r|r|r|>{}r|}
+\hline
+Tradition & X1 & X2 & X3 & X4\\
+\hline
+\hline
+A & 1 & 1 & 1 & \vphantom{2} 1\\
+\hline
+A & 1 & 1 & 0 & 1\\
+\hline
+A & 1 & 1 & 1 & \vphantom{1} 1\\
+\hline
+A & 1 & 0 & 1 & 1\\
+\hline
+A & 1 & 1 & 1 & 1\\
+\hline
+B & 0 & 0 & 0 & \vphantom{2} 0\\
+\hline
+B & 0 & 0 & 0 & \vphantom{1} 0\\
+\hline
+B & 0 & 1 & 0 & 0\\
+\hline
+B & 0 & 0 & 0 & 0\\
+\hline
+B & 0 & 0 & 1 & 0\\
+\hline
+\hline
+\end{tabular}
+\end{table*}
+\begin{table*}[hbt]
+\ifnextchar[{\eatarg}{}
+[tbp]
+
+\begin{center}
+\begin{threeparttable}
+
+\caption{\label{tab:tabesbias}Overall bias across replications and effect size (partial $\eta^2$) of simulation conditions.}
+
+\begin{tabular}{llllllll}
+\toprule
+type & \multicolumn{1}{c}{parameter} & \multicolumn{1}{c}{overall} & \multicolumn{1}{c}{C} & \multicolumn{1}{c}{$\Delta_{\mu}$} & \multicolumn{1}{c}{K} & \multicolumn{1}{c}{$p_{\text{ratio}}$} & \multicolumn{1}{c}{$v_i$}\\
+\midrule
+Bias & $\mu$ & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00\\
+Bias & $\tau^2$ & -0.05 & 0.00 & 0.03 & 0.04 & 0.00 & 0.00\\
+Bias & $\pi$ & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00\\
+Absolute bias & $\mu$ & 0.25 & 0.04 & 0.05 & 0.13 & 0.01 & 0.00\\
+Absolute bias & $\tau^2$ & 0.25 & 0.02 & 0.00 & 0.07 & 0.00 & 0.00\\
+Absolute bias & $\pi$ & 0.08 & 0.00 & 0.10 & 0.12 & 0.00 & 0.00\\
+\bottomrule
+\end{tabular}
+
+\end{threeparttable}
+\end{center}
+
+\end{table*}
+\begin{table*}[hbt]
+\ifnextchar[{\eatarg}{}
+[tbp]
+
+\begin{center}
+\begin{threeparttable}
+
+\caption{\label{tab:tabcov}Overall CI coverage and effect size (partial $\eta^2$) of simulation conditions.}
+
+\begin{tabular}{lllllll}
+\toprule
+parameter & \multicolumn{1}{c}{overall} & \multicolumn{1}{c}{C} & \multicolumn{1}{c}{$\Delta_{\mu}$} & \multicolumn{1}{c}{K} & \multicolumn{1}{c}{$p_{\text{ratio}}$} & \multicolumn{1}{c}{$v_i$}\\
+\midrule
+$\mu$ & 0.88 & 0.01 & 0.02 & 0.01 & 0.00 & 0.00\\
+$\tau^2$ & 0.88 & 0.01 & 0.01 & 0.00 & 0.00 & 0.00\\
+$\pi$ & 0.88 & 0.00 & 0.02 & 0.00 & 0.00 & 0.00\\
+\bottomrule
+\end{tabular}
+
+\end{threeparttable}
+\end{center}
+
+\end{table*}
+\begin{table*}[hbt]
+\ifnextchar[{\eatarg}{}
+[tbp]
+
+\begin{center}
+\begin{threeparttable}
+
+\caption{\label{tab:tabenum}Overall enumeration accuracy and effect size (partial $\eta^2$) of simulation conditions.}
+
+\begin{tabular}{lllllll}
+\toprule
+Algorithm & \multicolumn{1}{c}{overall} & \multicolumn{1}{c}{C} & \multicolumn{1}{c}{$\Delta_{\mu}$} & \multicolumn{1}{c}{K} & \multicolumn{1}{c}{$p_{\text{ratio}}$} & \multicolumn{1}{c}{$v_i$}\\
+\midrule
+AIC & 0.54 & 0.03 & 0.16 & 0.07 & 0.00 & 0.00\\
+BIC & 0.48 & 0.14 & 0.39 & 0.13 & 0.00 & 0.00\\
+PMC & 0.45 & 0.01 & 0.05 & 0.01 & 0.00 & 0.00\\
+CV & 0.44 & 0.07 & 0.11 & 0.06 & 0.00 & 0.00\\
+ICL & 0.29 & 0.23 & 0.48 & 0.02 & 0.00 & 0.00\\
+\bottomrule
+\end{tabular}
+
+\end{threeparttable}
+\end{center}
+
+\end{table*}
+\begin{table*}[hbt]
+\ifnextchar[{\eatarg}{}
+[tbp]
+
+\begin{center}
+\begin{threeparttable}
+
+\caption{\label{tab:tabmetaplus}Results of Study 2}
+
+\begin{tabular}{llllllllll}
+\toprule
+method & \multicolumn{1}{c}{$MAE_{\mu}$} & \multicolumn{1}{c}{$MAE_{\tau^2}$} & \multicolumn{1}{c}{$MAE_{\pi}$} & \multicolumn{1}{c}{$Acc_{\mu}$} & \multicolumn{1}{c}{$Acc_{\tau^2}$} & \multicolumn{1}{c}{$Acc_{\pi}$} & \multicolumn{1}{c}{$CC_{\mu}$} & \multicolumn{1}{c}{$CC_{\tau^2}$} & \multicolumn{1}{c}{$CC_{\pi}$}\\
+\midrule
+remix & 0.15 & 0.45 & 0.24 & 0.34 & 0.54 & 0.51 & 0.91 & 0.69 & 0.74\\
+metaplus & 0.18 & 0.46 & 0.23 & 0.66 & 0.46 & 0.49 & 0.92 &  & \\
+\bottomrule
+\addlinespace
+\end{tabular}
+
+\begin{tablenotes}[para]
+\normalsize{\textit{Note.} Mean absolute error (MAE), proportion of replications in which each algorithm was more accurate (lower bias) than the other (Acc), and Confidence interval coverage (CC).}
+\end{tablenotes}
+
+\end{threeparttable}
+\end{center}
+
+\end{table*}

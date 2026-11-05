@@ -1,0 +1,2 @@
+In 0.98 percent of replications, all models up to the true model converged.
+0.08 percent of replications had one model or more that did not converge.

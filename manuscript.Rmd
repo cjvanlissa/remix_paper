@@ -1,0 +1,889 @@
+---
+title             : "When One Random Effect Is Not Enough: Mixture Model Meta-Analysis"
+shorttitle        : "MIXTURE META-ANALYSIS"
+
+author:
+  - name: "Caspar J. Van Lissa"
+    affiliation: "1"
+    corresponding: yes
+    address: "Professor Cobbenhagenlaan 125, 5037 DB Tilburg, The Netherlands"
+    email: "c.j.vanlissa@tilburguniversity.edu"
+    role:         # Contributorship roles (e.g., CRediT, https://casrai.org/credit/)
+      - Conceptualization
+      - Formal Analysis
+      - Funding acquisition
+      - Methodology
+      - Project administration
+      - Software
+      - Supervision
+      - Writing – original draft
+      - Writing – review & editing
+
+affiliation:
+  - id            : "1"
+    institution   : "Tilburg University, dept. Methodology & Statistics"
+
+authornote: |
+  This is a preprint paper, generated from Git Commit # `r substr(gert::git_commit_id(),1,8)`.
+  **Original Publication** This is original unpublished work, not submitted for publication elsewhere.
+  **Competing Interests** The author declares no conflict of interest.
+  **Data availability** All data and results can be exactly reproduced using the code and random seeds archived at [MASKED FOR REVIEW].
+  **Funding statement** This work was funded by NWO Vidi grant VI.Vidi.231G.017.
+
+abstract: |
+  `r trimws(readr::read_file(here::here('paper/abstract.md')))`
+
+keywords          : "meta-analysis, mixture model, latent class analysis, random effects"
+wordcount         : "`r wordcountaddin::word_count(here::here('paper/manuscript.Rmd'))`"
+bibliography      : "metamixture.bib"
+floatsintext      : no
+linenumbers       : yes
+draft             : no
+mask              : no
+figurelist        : no
+tablelist         : no
+footnotelist      : no
+classoption       : "man, noextraspace"
+urlcolor          : blue
+output            :
+  papaja::apa6_pdf: default
+  md_document: default
+header-includes:
+  - \usepackage{longtable, setspace, subfig}
+  - \raggedbottom
+---
+
+```{r setup, include = FALSE}
+library("papaja")
+library(ggplot2)
+library(ggpubr)
+r_refs("metamixture.bib")
+set.seed(42)
+knitr::opts_chunk$set(cache.extra = knitr::rand_seed)
+options(knitr.kable.NA = '')
+run_everything = FALSE
+perf_by_con <- read.csv("results/performance_by_condition.csv")
+```
+
+## Highlights 
+
+- **What is already known:** Random-effects meta-analysis assumes that true effects follow a single normal distribution. This assumption does not hold when there are distinct subgroups of effect sizes, e.g., due to different research traditions, publication bias, or p-hacking.
+- **What is new:** We introduce and validate random-effects mixture meta-analysis, a flexible framework for estimating latent subgroups of effect sizes while accounting for sampling variance.
+- **Potential impact for *Research Synthesis Methods* readers:** With a user-friendly implementation in R, researchers can explore latent clusters of effect sizes, obtain more powerful tests for the overall effect in the presence of outliers, and perform auxiliary analyses with class as an outcome or predictor of study characteristics.
+
+When synthesizing effect sizes originating from different studies, a key question is how to properly account for between-study differences.
+The choice of an appropriate statistical model depends on theoretical assumptions about the sources of heterogeneity.
+For example, the *fixed-effect* model assumes no differences in true effect size.
+If effect sizes result from close replications of a particular experiment, it is sensible to assume one true population effect, which implies that any differences between observed effect sizes must be due to sampling error.
+If effect sizes instead originate from a wide range of different studies, conducted in different labs with unique designs and distinct measures - then we might expert there to be variance in true effect sizes.
+If we assume that there are no systematic differences, then the *random effects* model can estimate the variance of true effect sizes, $\tau^2$.
+If we know that there are systematic sources of heterogeneity, for example, because some studies used a stronger manipulation than others, and we have coded these sources as moderator variables, then we can control for these differences using *meta-regression*.
+And finally, if we suspect that there are systematic sources of heterogeneity, but we don't know which moderator variables are relevant, machine learning methods meta-regression can be used to perform variable selection, retaining only the relevant moderators [@vanlissaSelectingRelevantModerators2023; @vanlissaSmallSampleMetaanalyses2020].
+These methods address situations where there is no heterogeneity, random heterogeneity, or heterogeneity due to known and measured moderators.
+
+A scenario that has been less commonly discussed occurs when there is systematic heterogeneity in effect sizes,
+but its causes are unmeasured, or not uniquely identifiable.
+When this occurs, observed effect sizes do not follow a single normal distribution,
+but rather, a mixture of multiple normal distributions, as illustrated in Figure \@ref(fig:figmixexamples).
+The family of methods known by the umbrella term "Latent Class Analysis" [@vermuntLatentClassAnalysis2004] disentangles the underlying constituent distributions.
+The finite normal mixture model - or latent profile analysis - assumes that each class is best described by a normal distribution, which renders it suitable for the analysis of continuous observed indicators, such as effect sizes in meta-analysis.
+A mixture model assumes a known number of unobserved subgroups, called classes.
+Like individual normal distributions, each class is characterized by two parameters: a mean and variance.
+These can also be assumed to be equal across classes.
+The model jointly estimates these class parameters, as well as the mixing proportions of the classes (how prevalent each class is).
+
+The logic behind mixture modeling can be straightforwardly applied to meta-analysis.
+One important difference from primary data analysis is that each observed datapoint is more or less informative about the mixture distributions, depending on its precision,
+which is determined by its sampling variance.
+Studies with smaller sampling variance (typically those with larger samples) provide more accurate information about the (mixture) distribution of true effects.
+For this reason, models for meta-analysis typically include a form of weighting - either explicitly, or implicitly via the model's likelihood - that accounts study-specific sampling variance.
+
+The present study introduces a random-effects mixture - or "remix" - model for meta-analysis and evaluates its performance in a comprehensive simulation study.
+The algorithm is implemented in the `metamixture` package, written in the free open source language R [@R-base].
+It builds upon the structural equation modeling framework of `OpenMx` [@bokerOpenMxOpenSource2011].
+Consequently, the resulting `remix` models are fully customizable, extensible, and can make use of the ecosystem of packages for generating, running, and reporting `OpenMx` models, like `tidySEM` [@vanlissaRecommendedPracticesLatent2024].
+To illustrate the relevance of the remix model for meta-analysis, we first present several scenarios where the model would be an appropriate choice.
+
+## When is a Mixture Model Appropriate for Meta-Analysis?
+
+The random-effects model is most commonly used for meta-analysis [@hedgesFixedRandomeffectsModels1998].
+It assumes that between-study differences are normally distributed.
+Let's consider several scenarios that would violate this assumption.
+First, even if true effects are normally distributed in the population,
+the studies included in a meta-analysis may not constitute a representative sample of that population. 
+New studies are not designed to randomly probe the full range of conditions under which an effect could occur, but instead, they follow in the footsteps of work that has been done before.
+Consequently, it may be more reasonable to think of published studies as a "snowball sample" from the population of possible studies, arising from a genetic process: each published study has a probability of inspiring further research, and this probability may be higher for studies with large effects than studies with small effects.
+This follow-up research inherits will inherit many of the characteristics of the preceding work, and thus, new effect sizes are correlated with prior effect sizes, 
+as are the values of any moderator variables that encode between-study differences.
+The published effect sizes may thus contain an over-representation of specific populations,
+interventions, or measures.
+
+It is easy to see how such a process would give rise to systematic deviations from normality in the distribution of published effect sizes.
+For example, consider a field that is dominated by two strong "research traditions": A and B.
+Both favor a particular research design (e.g., experience sampling versus lab experiments), methodology (e.g., random prompts sent to participants' mobile devices, versus a series of computerized tasks), set of measures (questionnaire versus behavioral measures), and population (general public versus undergraduate students).
+Within each tradition, there can be minor variations in all of these characteristics.
+Given four hypothetical study characteristics, $X_{1\ldots4}$, the moderator matrix for effect sizes from these two traditions might look like \@ref(tab:tabmulticol).
+If we assume that some of these differences between traditions influence the effect sizes found, then the distribution of observed effects from this field might be bimodal, as illustrated in Figure \@ref(fig:figmixexamples)A.
+
+```{r tabmulticol}
+
+dat <- data.frame(
+  Tradition = rep(c("A", "B"), each = 5),
+  X1 = c(1, 1, 1, 1, 1, 0, 0, 0, 0, 0),
+  X2 = c(1, 1, 1, 0, 1, 0, 0, 1, 0, 0),
+  X3 = c(1, 0, 1, 1, 1, 0, 0, 0, 0, 1),
+  X4 = c(1, 1, 1, 1, 1, 0, 0, 0, 0, 0)
+)
+knitr::kable(
+  dat,
+  format = "latex",
+  booktabs = FALSE,
+  caption = "Example of multicollinear moderators."
+) |>
+  kableExtra::column_spec(
+    1, border_left = TRUE
+  ) |>
+  kableExtra::column_spec(
+    ncol(dat), border_right = TRUE
+  ) |>
+  kableExtra::row_spec(
+    0, hline_after = TRUE
+  ) |>
+  kableExtra::row_spec(
+    nrow(dat), hline_after = TRUE
+  )
+```
+
+```{r eval = run_everything}
+raise_overall <- .01
+x <- seq(-4, 4, length.out = 1000)
+
+# Two underlying normal distributions
+A <- dnorm(x, mean = -1.5, sd = 1)
+B <- dnorm(x, mean = 1.5, sd = 1)
+
+# Equal-weight mixture
+mixture <- 0.5 * A + 0.5 * B
+
+dat <- data.frame(
+  x = rep(x, 3),
+  density = c(0.5 * A, 0.5 * B, mixture+raise_overall),
+  distribution = rep(
+    c("Tradition A", "Tradition B", "Overall"),
+    each = length(x)
+  )
+)
+
+p1 <- ggplot(dat, aes(x, density, color = distribution)) +
+  geom_line(linewidth = 1.2) +
+  scale_color_manual(values = c(
+    "Tradition A" = "#0072B2",
+    "Tradition B" = "#D55E00",
+    "Overall" = "black"
+  )) +
+  labs(
+    x = "Effect size",
+    y = "Density",
+    color = NULL
+  ) +
+  theme_classic(base_size = 14) +
+  theme(legend.position = "bottom", axis.ticks = element_blank(), axis.text = element_blank())
+
+# Two underlying normal distributions
+A <- dnorm(x, mean = 0, sd = 3)
+B <- dnorm(x, mean = 0, sd = .5)
+
+# Equal-weight mixture
+mixture <- 0.5 * A + 0.5 * B
+
+dat <- data.frame(
+  x = rep(x, 3),
+  density = c(0.5 * A, 0.5 * B, mixture+raise_overall),
+  distribution = rep(
+    c("Underpowered", "Sufficient power", "Overall"),
+    each = length(x)
+  )
+)
+
+p2 <- ggplot(dat, aes(x, density, color = distribution)) +
+  geom_line(linewidth = 1.2) +
+  scale_color_manual(values = c(
+    "Underpowered" = "#0072B2",
+    "Sufficient power" = "#D55E00",
+    "Overall" = "black"
+  )) +
+  labs(
+    x = "Effect size",
+    y = "Density",
+    color = NULL
+  ) +
+  theme_classic(base_size = 14) +
+  theme(legend.position = "bottom", axis.ticks = element_blank(), axis.text = element_blank())
+
+
+x <- seq(-6, 6, length.out = 1000)
+# Single extreme outlier
+single_outlier <- -4
+# Main distribution and small cluster of outliers
+A <- dnorm(x, mean = 0, sd = 1)
+B <- dnorm(x, mean = 4, sd = 0.45)
+C <- dnorm(x, mean = single_outlier, sd = 0.1)
+
+# Mixture with 5% outliers
+mixture <- 0.93 * A + 0.05 * B + .02*C
+
+dat <- data.frame(
+  x = rep(x, 3),
+  density = c(0.95 * A, 0.05 * B, mixture+raise_overall),
+  distribution = rep(
+    c("Random effects", "Outlier", "Overall"),
+    each = length(x)
+  )
+)
+
+
+indx <- which.min(abs(x-single_outlier))
+p3 <- ggplot(dat, aes(x, density, color = distribution)) +
+  geom_line(linewidth = 1.2) +
+  geom_segment(
+    aes(x = x[indx], xend = x[indx],
+        y = 0, yend = (mixture[indx]-raise_overall)),
+    inherit.aes = FALSE,
+    color = "#D55E00",
+    linewidth = 1.2
+  ) +
+  scale_color_manual(values = c(
+    "Random effects" = "#0072B2",
+    "Outlier" = "#D55E00",
+    "Overall" = "black"
+  )) +
+  labs(
+    x = "Effect size",
+    y = "Density",
+    color = NULL
+  ) +
+  theme_classic(base_size = 14) +
+  theme(
+    legend.position = "bottom",
+    axis.ticks = element_blank(),
+    axis.text = element_blank()
+  )
+
+
+p <- ggarrange(p1, p2, p3,
+          labels = c("A", "B", "C"),
+          ncol = 3, nrow = 1)
+ggsave("figmixexamples.pdf", p, device = "pdf", width = .5*297, height = .25*210, units = "mm", dpi = 300, scale = 2)
+```
+
+```{r figmixexamples, fig.cap="Scenarios that give rise to mixture distributions: A) different research traditions resulting in distinct class means; B) underpowered studies resulting in distinct heterogeneity variances; C) a single outlier (left) or a cluster of outliers (right)."}
+knitr::include_graphics("figmixexamples.pdf")
+```
+
+If a researcher is unaware of these systematic differences between effect sizes, they might conduct a meta-analysis of the effect sizes, ignoring these moderators.
+A random-effects meta-analysis of all effect sizes would yield an unrepresentative pooled effect size: the average effect is exactly in the middle of both research traditions, and thus representative of neither.
+Moverover, the estimated residual heterogeneity would be positively biased (inflated) by the differences between the two research traditions.
+
+Even if the researcher had coded these moderators, they might still be practically prevented from accounting for them.
+This moderator matrix has high multicolinearity: there is near-perfect overlap between the values of different moderators.
+Including multicolinear moderators in a meta-regression makes it difficult to estimate each moderator's unique effect on effect size, resulting in unstable coefficient estimates, inflated standard errors, and poorly interpretable results [@steelComparingMetaanalyticModerator2002].
+Thus, even if we had measured these systematic sources of heterogeneity, we might run into practical problems when trying to control for them.
+
+As a second thought experiment, consider the presence of outliers in a meta-analytic dataset.
+For example, imagine that a scholar has, for many years, asked undergraduate students to conduct pilot studies of a particular effect.
+These pilot studies have small sample sizes, and thus show substantial variability in effect sizes.
+Then, the researcher obtains funding to conduct a series of sufficiently powered experiments.
+Not wanting students' work to go to waste, the researcher publishes a meta-analysis of all studies.
+The distribution of effects will look like Figure \@ref(fig:figmixexamples)B  [see also @beathFiniteMixtureMethod2014].
+Note that the tails of the overall distribution are inflated by the presence of the underpowered studies.
+In a random-effects meta-analysis, the estimated residual heterogeneity will be positively biased.
+
+Finally, consider publication bias: the fact that significant findings are more likely to get published, leading to an overrepresentation of false-positive effect sizes in the literature.
+It is plausible that phenomena exist whose true effect is zero, despite the existence of some (many) studies that report significant non-zero effects - purely due to publication bias [@collaborationEstimatingReproducibilityPsychological2015].
+Open science advocates have been advocating for changes to the publication culture that make it easier to publish null results [@lakensBenefitsPreregistrationRegistered2024].
+If we assume that both publication processes operate in parallel, the observed distribution of effect sizes in a field would be a mixture of two underlying distributions:
+one centered around zero, reflecting studies that are published for their open science practices,
+and one centered around a non-zero value, reflecting studies that are published because of their significant findings.
+
+While these are thought experiments - they are meant to evoke realistic aspects of the scientific (publication) culture,
+and give readers cause to question the widely held assumption that effect sizes are always normally distributed.
+Each scenario gives a reason for why, sometimes, one random-effects distribution is not enough.
+In these cases and others, mixture models can be used to disentangle multiple underlying random-effects distributions.
+
+For example, \@ref(fig:figmixexamples)A calls for a two-class mixture model with free means and equal variances.
+This allows us to tease apart the unique pooled effect sizes of the two research traditions.
+Of course - an expert might assign each study to one tradition, and treat "assigned tradition" as a moderating variable.
+However, this approach ignores measurement error in the coding of assigned tradition.
+Note that the traditions are not perfectly distinct, and that some studies share similarities with both traditions.
+A mixture model is a more elegant solution, as it allows each case to contribute to the estimation of both distributions - and thus, ambiguous studies that resemble both traditions will contribute to both distributions.
+This also resolves the aforementioned multicolinearity problem.
+
+Figure \@ref(fig:figmixexamples)B illustrates a two-class mixture model with equal means and free variances.
+Such a model would tease apart the residual heterogeneity of the sufficiently powered studies from that of the underpowered studies.
+The underpowered-class captures some of the heavy tails from the overall distribution,
+thus enabling more powerful inference for the overall effect in the sufficiently-powered class.
+Finally, Figure \@ref(fig:figmixexamples)C requires a three-class model.
+The overall distribution will have a free mean and variance,
+as will the small cluster of outliers in the right tail.
+The single outlier in the left tail can have a class of its own, with mean equal to the observed value, and variance fixed to zero (because variance for one observation is undefined).
+
+### Previous Applications of Mixture Models in Meta-Analysis
+
+The present study is emphatically not the first to introduce mixture models in meta-analysis.
+Prior work has demonstrated their usefulness for addressing several methodological challenges.
+One such application is the use of mixture models for moderator analysis.
+Different approaches have been taken; for example, some authors have used mixture models to dichotomize the moderator matrix, and use predicted class membership in meta-regression [@graefeApplicationFiniteMixture2025].
+This way, several study quality characteristics could be reduced to a single binary study quality indicator (high versus low), which could increase power to detect a moderator effect.
+In this context, moderators are assumed to be measured without sampling error, and thus, the regular mixture model can be used.
+Other authors have taken the inverse approach, performing mixture modeling on the effect sizes and then predicting class membership, rather than effect size value, in moderator analysis to increase statistical power [@zhangDisentanglingEffectSize2022].
+<!-- Their work provides an important theoretical and empirical foundation for -->
+<!-- the present paper. -->
+Like the present paper, these authors appear to use a random-effects mixture model, because the sampling variances are mentioned (p. 378).
+However, their focus is on moderator analysis, and
+little detail is provided on the mixture model implementation ("we treat the mixture decomposition algorithm as a black box", p. 378).
+Compared to this prior work, the present paper introduces a more general random-effects mixture meta-analysis framework,
+which can also be extended to moderator analysis that properly accounts for classification error via the weighted BCH approach [@bolckEstimatingLatentStructure2004], two-step method [@bakkTwoStepEstimationModels2018], or pseudo-class draws [@wangResidualDiagnosticsGrowth2005], all implemented in `tidySEM` [@vanlissaRecommendedPracticesLatent2024].
+
+Another application of mixture modeling to meta-analysis focused on robustness to outliers [@beathFiniteMixtureMethod2014].
+This approach is suitable for scenarios like Figure \@ref(fig:figmixexamples)B,
+where outliers inflate the tails of the observed data distribution.
+It estimates two latent classes with a common mean and free variances.
+Thus, one class can have a large variance and capture the outliers, while the other class offers less biased estimation of residual heterogeneity and more powerful inference for the pooled effect.
+This method is implemented in the `metaplus` R-package.
+As it is limited to 2-class models with equal means and free variances,
+it is a special case of the more general framework introduced in this paper.
+
+Other applications of mixture models to meta-analysis have been developed in the context of diagnostic tests, to summarize tests' sensitivity and specificity across studies, and construct aggregate receiver operating characteristic curves [@schlattmannMixtureModelsDiagnostic2015; @eusebiLatentClassBivariate2014].
+One of these approaches models these test characteristics as discrete random effects, taking into account sampling variance but not residual heterogeneity within classes [@schlattmannMixtureModelsDiagnostic2015].
+While this method is implemented in an R-package, it has been removed from CRAN, and we were not able to compile an archived version to compare its performance to our method.
+The other approach assumes binomial sampling distributions, which precludes its application to normal mixture models @eusebiLatentClassBivariate2014].
+Moreover, it is only implemented in closed-source commercial software.
+An important factor that distinguished these methods from our approach is that they are all designed for bivariate diagnostic accuracy outcomes rather than for conventional univariate meta-analysis of continuous effect-size estimates with known sampling variances.
+
+The research discussed here lays the statistical foundations for the present work,
+but differs in its intended applications, distributional assumptions, and generality.
+We introduce an open-source implementation of univariate random-effects mixture meta-analysis that accommodates class-specific or constrained mean effects and residual heterogeneity, while accounting for study-specific sampling variances. 
+It is implemented in the `remix()` function in the `metamixture` R-package.
+Building on `OpenMx`, this implementation allows further model customization and extension, auxiliary analysis of predictors and moderators of class membership,
+and use of existing tools for reporting and visualization, like `tidySEM`.
+We evaluate the performance of these models in a simulation study, focusing on parameter recovery, confidence interval (CI) coverage, convergence, and the identification of the number of latent classes.
+<!-- Together, these contributions aim to make random-effects mixture meta-analysis more accessible while providing empirical guidance on the conditions under which it can be applied reliably. -->
+
+### Statistical Model
+
+Finite mixture models represent the observed data distribution as a mixture of multiple underlying distributions.
+Each observation has a probability of belonging to one of $k$ latent classes;
+the term "finite" implies that the number of components is known or fixed.
+Each class, in turn, is defined by several parameters.
+For a single observed continuous variable, these are often means $\mu_{1 \ldots k}$ and variances $\sigma^2_{1 \ldots k}$.
+The overall distribution is a mixture of the class distributions, and each class contributes to the extent determined by the mixing proportion $\pi_k$.
+A class with a high mixing proportion contributes more to the overall distribution than one with a low mixing proportion.
+<!-- In this way, mixture models can be used to describe, explore, and test distributions that are not well described as a single Gaussian. -->
+<!-- When applying mixture models to meta-analysis, we might instead refer to its parameters as class-specific pooled effect sizes $\mu_k$ and residual heterogeneities $\tau^2_k$. -->
+
+Unlike mixture models for individual participant data, random-effects mixture models must account for sampling variance.
+In the conventional random effects model, the observed sampling variance is treated as known to construct a weighted likelihood.
+This model describes a single normal distribution of true effects, with its two parameters $\mu$, the overall mean effect, and $\tau^2$, the between-study variance or heterogeneity.
+If we have coded observed effect sizes $y_i$ and their sampling variances $v_i$ from $i \in 1 \ldots n$ studies, this model is:
+
+$$
+\begin{equation}
+y_i \sim \mathcal{N}(\mu,v_i+\tau^2)
+\end{equation}
+$$
+
+Note that the variance of individual effect sizes is composed of two parts: the residual heterogeneity $\tau^2$, and individual sampling variance $v_i$, which is treated as known.
+When fitting this model to data, a (restricted) maximum likelihood estimator can be used to maximize the sum of the log-likelihood of individual observations, assuming a normal probability density $\phi$.
+Including $v_i$ in the density function implicitly weights studies by their sampling variance:
+
+$$
+\begin{equation}
+\ell(\mu, \tau^2) = \sum_{i=1}^{n} \log \phi(y_i; \mu, v_i +\tau^2)
+\end{equation}
+$$
+
+We can extend this model to a finite mixture model for $K$ latent classes.
+Let $C_i$ denote the unobserved class membership of observation $i$.
+The marginal density of each observed effect size is a weighted sum of class-specific normal densities, where the weights are determined by the mixing proportions $\boldsymbol{\pi} = \pi_{1 \ldots K-1}$:
+the proportion of the sample that belongs to each class.
+Note that it is not necessary to estimate all $K$ mixing proportions, because proportions sum to 1; the $K^{\text{th}}$ mixing proportion is given by taking 1 minus the sum of all others.
+Aside from these mixing proportions, the other model parameters are class-specific pooled effects and heterogeneities, $\boldsymbol{\mu} = \mu_{1 \ldots K}$ and $\boldsymbol{\tau^2} = \tau^2_{1 \ldots K}$.
+A $K$-class model thus has $p=K+K+(K-1)=3K-1$ free parameters.
+
+$$
+\begin{equation}
+\ell(\boldsymbol{\pi}, \boldsymbol{\mu}, \boldsymbol{\tau}^2) =
+\sum_{i=1}^{n}
+\log
+\left[\sum_{k=1}^{K} \pi_k \phi(y_i; \mu_k, v_i + \tau_k^2) \right]
+\end{equation}
+$$
+
+Note that each observed datapoint contributes to the estimation of all classes,
+but its relative contribution to each class depends on its location relative to each class' distribution.
+For example, consider \@ref(fig:figmixexamples); effect sizes that are near the saddle point between the blue and orange class provide information about the estimated mean and variance of both, whereas studies that are all the way on the left side of the blue distribution barely provide information about the orange distribution, and vice versa.
+
+### Estimation
+
+Estimation follows a three-stage procedure, based on the approach taken in the `tidySEM` R-package [@vanlissaRecommendedPracticesLatent2024].
+Theoretically, this method efficiently converges to global solutions while actively avoiding local solutions.
+First, the sample is divided into $K$ clusters by applying k-means clustering to the observed effect sizes [@hartiganAlgorithm136KMeans1979]^[When class means are constrained to equality, the clustering is applied to the residuals instead.].
+Starting values for the class-specific mean effect sizes and residual heterogeneity variances are computed for each cluster using the DL-estimator [@dersimonianMetaanalysisClinicalTrials1986].
+Initial class proportions are set to the cluster proportions.
+Next, simulated annealing is used to explore the likelihood surface and search for a global optimum [@pervezComponentwiseSimulatedAnnealing2015].
+Unlike numerical optimization, which greedily approaches the closest maximum from the starting values,
+simulated annealing occasionally accepts parameter changes that worsen model fit.
+This is useful, because mixture models' likelihood tends to have many local optima where a greedy algorithm could get stuck.
+Simulated annealing actively escapes local optima and explores alternative solutions.
+Over time, worsening moves become less likely, encouraging convergence toward a promising solution.
+The final likelihood from simulated annealing is further refined using numerical optimization.
+
+Simulated annealing is efficient compared to the brute-force approach of using many random starting values - but neither method is guaranteed to find the global optimum solution.
+The published version of `remix()` checks the simulated annealing result for convergence,
+and if convergence has failed, it runs an additional 20 sets of random starting values to find a better solution.
+Once the model has converged, standard errors and profile-likelihood confidence intervals are calculated.
+
+### Class Enumeration
+
+When the number of classes is known on theoretical grounds, it is sufficient to estimate the $K$-class model, and optionally, to test the hypotheses that $K$-classes suffice [@vanlissaRecommendedPracticesLatent2024].
+However, mixture modeling is also used for exploratory analyses of heterogeneity.
+In these cases, $K$ is determined in a data-driven manner.
+Two well-established approaches to class enumeration are information theoretical methods and likelihood ratio tests.
+Information theoretical methods select the model with the lowest value on a statistic that balances model fit and complexity, by adding a complexity penalty to the minus two log-likelihood.
+Examples include the Akaike Information Criterion [AIC, @akaikeNewLookStatistical1974], Bayesian Information Criterion [BIC, @schwarzEstimatingDimensionModel1978], or Integrated Completed Likelihood [@biernackiAssessingMixtureModel2000], where the latter is unique in penalizing poor class separation as well.
+A limitation of these methods is that they do not offer significance tests.
+Likelihood ratio tests do, but are generally problematic for mixture models because when comparing a $K-1$ and $K$-class model, the $K-1$ model's parameters for one class are set to zero, which is on the boundary of the parameter space of the $K$-class model.
+The Bootstrapped Likelihood Ratio Test is an exception [BLRT, @mclachlanBootstrappingLikelihoodRatio1987].
+However, its major limitation is that it re-estimates all models on all bootstrap samples (i.e., 100 or 1000 times or more),
+which is computationally very expensive.
+
+A recently introduced approach is Predictive Model Comparison (PMC).
+Based on the "lazy bootstrap", PMC repeatedly simulates data from each fitted model and evaluates how closely the simulated data distributions resemble the observed data [@kollenburgLazyBootstrapFast2018].
+For univariate data like effect sizes, one could use a metric that captures how "surprising" the observed data is in the context of the model-implied data distribution [@shannonMathematicalTheoryCommunication1948].
+The surprisal statistic is given as the sum of negative log probability densities of the observed data in the (estimated) density distribution of a simulated dataset.
+Lower values indicate that the the observed data have greater probability density in the simulated data distribution, which means it is a good approximation of the observed data distribution.
+Repeating the simulation yields a distribution of surprisal statistics,
+from which confidence intervals for differences in mean surprisal between models can be constructed.
+A model with $K$ classes is preferred over a model with $K-1$ classes when the confidence interval indicates a reduction in expected surprisal.
+
+The present study introduces another potential approach, based on cross-validation [@hastieElementsStatisticalLearning2009].
+In cross-validation, observed effect sizes are randomly split into multiple subsets.
+Each candidate model is fitted on effect sizes from all subsets except one, and the fitted model's predictive performance is evaluated on the one held-out subset.
+Whereas cross-validation normally compares predicted scores to observed scores,
+in mixture modeling, this is not possible because true class membership is unknown.
+To circumvent this problem, we instead used the aforementioned surprisal statistic to evaluate how surprising the held-out effect sizes are in the estimated mixture distribution.
+A key distinction is that the likelihood of the held-out effect sizes can be directly evaluated with respect to the cross-validated model's parameters,
+rather then the simulated data density.
+Surprisal scores are summed across subsets.
+The model with the lowest value has the best out-of-sample predictive performance, and is selected.
+While this method also requires re-fitting models, it only estimates each model a few times, compared to BLRT's 100s or 1000s of times.
+At present, the best-performing class enumeration methods for individual participant data appear to be the BIC and BLRT [see @vanlissaRecommendedPracticesLatent2024].
+However, their performance for random-effects mixture meta-analysis is unknown.
+
+### The Present Study
+
+We introduce and validate a method for estimating random-effects mixture meta-analysis models that accommodates known, study-specific sampling variances.
+In a comprehensive simulation study, we examine the method's parameter bias, CI coverage, and the performance of different approaches to class enumeration.
+To assess CI coverage, we used information-based standard errors to compute confidence intervals for class means and mixing proportions.
+For residual heterogeneity, we used profile likelihood confidence intervals,
+as these were found to have better coverage in preliminary analyses.
+
+## Study 1: Validation of Random-Effects Mixture Meta-Analysis
+
+We used a factorial design with 100 replications for each unique combination of conditions.
+The true number of classes was $K \in (1, 2, 3)$.
+The difference in true means between classes was $\Delta_\mu = (2, 3, 4)$.
+Because residual heterogeneity was fixed at $1$, these values can be interpreted as the number of standard deviations difference between successive class means.
+Class imbalance was manipulated as the ratio between the size of the first class and the rest, where the first class was $p_{\text{ratio}} \in (1, 1.5, 2)$ times as large as the other classes.
+Other simulation parameters were based on observed properties of 705 empirical meta-analyses [@vanerpEstimatesBetweenStudyHeterogeneity2017].
+We manipulated the number of true effect sizes, $n \in (20, 50, 100, 300)$,
+Note that 20 observations is already a substantial sample in meta-analysis, but mixture models have many parameters, so a reasonable sample size is required.
+As a 4-class model has 11 parameters, a sample of 20 effect sizes gives fewer than two observations per parameter.
+Individual effect sizes' sampling variance was drawn from a uniform distribution between $0$ and $v_{\text{max}} \in (.001, .01, .1)$.
+Note that, for one true class, $\Delta_\mu$ and $p_{\text{ratio}}$ are meaningless and were collapsed to 0 and 1, respectively.
+For a 2-class model with equal mixing proportions and residual heterogeneity up to $.01$, the population mixture distribution and the empirical distribution of a sample of 100 effect sizes is shown in Figure \@ref(fig:figsim).
+
+```{r eval = run_everything}
+set.seed(7)
+# Corrected simulation function
+sim_data <- function(k = 50, classes = 2, p_ratio = 1,
+                     vi = .01, es = 1) {
+  
+  ps <- c(p_ratio, rep(1, classes - 1L))
+  ps <- ps / sum(ps)
+  
+  mu <- (seq_len(classes) - 1L) * es
+  tau2_error <- 1
+  
+  C <- sample.int(classes, size = k, replace = TRUE, prob = ps)
+  vi_indiv <- runif(k, min = 0, max = vi * tau2_error)
+  
+  yi <- rnorm(
+    k,
+    mean = mu[C],
+    sd = sqrt(tau2_error + vi_indiv)
+  )
+  
+  data.frame(yi = yi, vi = vi_indiv, C = C)
+}
+
+
+# Simulate 100 observations for each scenario
+dat <- do.call(rbind, lapply(2:4, function(es) {
+  data.frame(
+    sim_data(k = 100, classes = 2, p_ratio = 1,
+             vi = .01, es = es),
+    es = es
+  )
+}))
+
+# Theoretical mixture density, averaging over sampling variance
+x <- seq(-4, 7, length.out = 1000)
+v_grid <- seq(0, .01, length.out = 101)
+
+ideal <- do.call(rbind, lapply(2:4, function(es) {
+  density <- vapply(x, function(xx) {
+    mean(
+      0.5 * dnorm(xx, mean = 0, sd = sqrt(1 + v_grid)) +
+        0.5 * dnorm(xx, mean = es, sd = sqrt(1 + v_grid))
+    )
+  }, numeric(1))
+  
+  data.frame(x = x, density = density, es = es)
+}))
+
+# Plot
+my_labs <- c("1" = "Delta[mu] == 1", "2" = "Delta[mu] == 2", "3" = "Delta[mu] == 3")
+ggplot(dat, aes(x = yi)) +
+  geom_histogram(
+    aes(y = after_stat(density)),
+    bins = 18,
+    fill = "grey75",
+    color = "white"
+  ) +
+  geom_line(
+    data = ideal,
+    aes(x = x, y = density),
+    inherit.aes = FALSE,
+    color = "#0072B2",
+    linewidth = 1.2
+  ) +
+  facet_wrap(
+    ~ es,
+    nrow = 1,
+    scales = "free",
+    labeller = as_labeller(my_labs, default = label_parsed)
+      #labeller(es = function(x) parse(text = paste0("Delta[mu] = ", x)))
+  ) +
+  scale_y_continuous(expand = c(0,0)) +
+  labs(
+    x = "Observed effect size",
+    y = "Density"
+  ) +
+  theme_bw(base_size = 14)+
+  theme(axis.text = element_blank(), axis.ticks = element_blank(), axis.title = element_blank()) -> p
+ggsave("figsim.pdf", p, device = "pdf", width = 200, height = 100, units = "mm", dpi = 300, scale = 1)
+```
+
+```{r figsim, fig.cap="Population mixture distribution (blue) and histogram of empirical distribution (gray histogram) of 100 observations."}
+knitr::include_graphics("figsim.pdf")
+```
+
+
+## Results
+
+Overall simulation results are available in Supplemental Table 1, a breakdown by simulation condition in Supplemental Table 2, and the effect size of each simulation condition in Supplemental Table 3.
+The simulation and analysis code were made reproducible with the Workflow for Open Reproducible Code in Science [WORCS, @vanlissaWORCSWorkflowOpen2021] so that
+readers can reproduce the results or adapt the code to examine additional scenarios, or to perform power analysis.
+The research archive is available at [MASKED FOR REVIEW]().
+
+As a manipulation check for effect size, we examined class separability,
+operationalized using an entropy criterion on a scale from 0 (no class separation) to 1 (perfect separation), with values over $0.80$ indicating good separation [@celeuxEntropyCriterionAssessing1996].
+Results showed poor class separation at $S(\Delta_\mu = 2) `r worcs::report(perf_by_con[["mean"]][perf_by_con[["factor"]] == "es" & perf_by_con[["level"]] == "2" & perf_by_con[["outcome"]] == "ent"])`$,
+good separation at $S(\Delta_\mu = 3) `r worcs::report(perf_by_con[["mean"]][perf_by_con[["factor"]] == "es" & perf_by_con[["level"]] == "3" & perf_by_con[["outcome"]] == "ent"])`$, and very good separation at $S(\Delta_\mu = 4) `r worcs::report(perf_by_con[["mean"]][perf_by_con[["factor"]] == "es" & perf_by_con[["level"]] == "4" & perf_by_con[["outcome"]] == "ent"])`$.
+Our simulation does not cover very poor class separation, nor excellent class separation.
+
+### Bias
+
+```{r}
+performance <- read.csv("results/performance_overall.csv")
+perf_means <- performance[grepl("^acc_", performance$outcome), c("outcome","mean", "sd", "p10", "p90"), drop = FALSE]
+perf_means <- perf_means[order(perf_means$mean, decreasing = T), ]
+perf_means$outcome <- toupper(gsub("acc_", "", perf_means$outcome))
+#glue::glue('The best-performing algorithm was {perf_means$outcome[1]} (p {worcs::report(perf_means$mean[1])}), followed by {paste0(perf_means$outcome[-c(1, nrow(perf_means))], " (p", sapply(perf_means$mean[-c(1, nrow(perf_means))],  worcs::report), ")", collapse = ", ")}, and {perf_means$outcome[nrow(perf_means)]} (p {worcs::report(perf_means$mean[nrow(perf_means)])}).')
+
+effect_sizes <- read.csv("results/factor_effect_sizes.csv")
+tab_es_bias <- effect_sizes[match(
+  c(paste0("bias_", c("mu", "tau", "pi")),
+    paste0("bias_abs_", c("mu", "tau", "pi"))), effect_sizes$outcome), ]
+tab_es_bias$outcome <- rep(c("$\\mu$", "$\\tau^2$", "$\\pi$"), 2)
+tab_es_bias$type <- rep(c("Bias", "Absolute bias"), each = 3)
+tab_es_bias$overall <- performance$mean[match(paste0(rep(c("bias", "bias_abs"), each = 3), "_", rep(c("mu", "tau", "pi"), 2)), performance$outcome)]
+tab_es_bias <- tab_es_bias[, c("type", "outcome", "overall","classes", "es", "k", "p_ratio", "vi")]
+renam <- c("type" = "type", "overall" = "overall","outcome" = "parameter", "classes" = "C", "es" = "$\\Delta_{\\mu}$", "k" = "K", "p_ratio" = "$p_{\\text{ratio}}$", "vi" = "$v_i$")
+names(tab_es_bias)[match(names(tab_es_bias), names(renam))] <- renam
+```
+
+Table \@ref(tab:tabesbias) shows the overall average bias across simulation repetitions, and effect sizes (partial $\eta^2$) of the simulation conditions on signed and absolute bias.
+Note that these effect sizes are only interpretable within the range of simulation factors examined in this simulation study; changing this range will affect the effect sizes.
+On average across conditions, signed bias was near zero for $\mu$ and $\pi$.
+The estimates of $\tau^2$ were negatively biased on average.
+Signed bias was barely affected by any design factors, with the exception of a small effect of effect size and number of classes on $\text{Bias}(\tau^2)$,
+which was more negatively biased when the effect size or sample size were smaller.
+Absolute bias for all parameters decreased with increasing sample size and effect size, and increased for $\mu$ and $\tau^2$ with increasing number of classes.
+Class imbalance and sampling variance did not affect signed or absolute bias for any parameter.
+
+```{r tabesbias}
+papaja::apa_table(tab_es_bias, caption = "Overall bias across replications and effect size (partial $\\eta^2$) of simulation conditions.", escape = FALSE, row.names = FALSE)
+```
+
+
+```{r figbias, fig.cap="Marginal effects of simulation conditions on parameter estimate bias."}
+knitr::include_graphics("results/plot_bias.pdf")
+```
+
+### Confidence Interval Coverage
+
+Table \@ref(tab:tabcov) shows effect sizes of the simulation conditions on coverage, and Figure \@ref(fig:figcov) shows their marginal effects.
+On average across conditions, CI coverage was below the nominal level of 95%.
+Effect sizes of simulation condition on CI coverage were near-zero,
+but trends in Figure \@ref(fig:figcov) show that coverage for all parameters decreased with an increasing number of classes, and increased with increasing effect size and sample size.
+
+```{r tabcov}
+tab_es_cov <- effect_sizes[match(paste0("cov_", c("mu", "tau", "pi")), effect_sizes$outcome), ]
+tab_es_cov$overall <- performance$mean[match(paste0("cov_", c("mu", "tau", "pi")), performance$outcome)]
+tab_es_cov$outcome <- rep(c("$\\mu$", "$\\tau^2$", "$\\pi$"), 1)
+tab_es_cov <- tab_es_cov[, c("outcome", "overall", "classes", "es", "k", "p_ratio", "vi")]
+names(tab_es_cov)[names(tab_es_cov) %in% names(renam)] <- na.omit(renam[match(names(tab_es_cov), names(renam))])
+
+papaja::apa_table(tab_es_cov, caption = "Overall CI coverage and effect size (partial $\\eta^2$) of simulation conditions.", escape = FALSE, row.names = FALSE)
+```
+
+```{r figcov, fig.cap="Marginal effects of simulation conditions on mean CI coverage."}
+knitr::include_graphics("results/plot_cov2.pdf")
+```
+
+
+### Class Enumeration
+
+Table \@ref(tab:tabenum) shows the overall performance of class enumeration methods and effect sizes of simulation conditions, and \@ref(fig:figenum) shows the marginal effects of simulation conditions on class enumeration performance.
+For 1-4 class models, randomly choosing a solution would yield 25% performance.
+`r glue::glue('The best-performing class enumeration algorithm {perf_means$outcome[1]} returned the correct solution $p = {worcs::report(100*perf_means$mean[1])}$% of the time, followed by {paste0(perf_means$outcome[-c(1, nrow(perf_means))], " ($p", sapply(100*perf_means$mean[-c(1, nrow(perf_means))],  worcs::report), "$%)", collapse = ", ")}, and {perf_means$outcome[nrow(perf_means)]} ($p {worcs::report(100*perf_means$mean[nrow(perf_means)])}$%).')`
+All algorithms were most affected by effect size (greater effect sizes resulted in better performance).
+The pattern of results was largely similar for all algorithms:
+larger samples improved performance, and more true classes worsened performance.
+One notable exception was PMC, which was largely invariant to simulation conditions,
+except effect size.
+Note that PMC showed a reverse trend for the number of classes: its performance improved with an increasing number of classes, but the size of this effect was very small.
+The primary failure mode of all algorithms was underfitting; overfitting barely occurred.
+
+```{r tabenum}
+tab_es_enum <- effect_sizes[grepl("^acc_", effect_sizes$outcome), ]
+tab_es_enum$outcome <- gsub("acc_", "", tab_es_enum$outcome)
+tab_es_enum$overall <- performance$mean[match(paste0("acc_", tab_es_enum$outcome), performance$outcome)]
+tab_es_enum <- tab_es_enum[, c("outcome", "overall","classes", "es", "k", "p_ratio", "vi")]
+names(tab_es_enum)[names(tab_es_enum) %in% names(renam)] <- renam[match(names(tab_es_enum), names(renam))]
+tab_es_enum$parameter <- toupper(tab_es_enum$parameter)
+tab_es_enum <- tab_es_enum[match(perf_means$outcome, tab_es_enum$parameter), ]
+names(tab_es_enum)[1] <- "Algorithm"
+#t(apply(tab_es_enum[, -1], 1, function(i){6-base::rank(as.numeric(i))}))
+papaja::apa_table(tab_es_enum, caption = "Overall enumeration accuracy and effect size (partial $\\eta^2$) of simulation conditions.", escape = FALSE, row.names = FALSE)
+```
+
+```{r figenum, fig.cap="Marginal effects of simulation conditions on class enumeration."}
+knitr::include_graphics("results/plot_enum.pdf")
+```
+
+## Study 2: Comparison to `metaplus`
+
+Since the `metaplus` R-package offers functionality that partly overlaps with the general random-effects mixture meta-analysis framework introduced here, we conducted a second, smaller study to compare the two methods.
+The `metaplus` R-package exclusively estimates 2-class mixture models with a shared mean and distinct heterogeneity parameters.
+This model can also be specified using `remix(classes = 2, mu = "equal", tau2 = "varying")`.
+We compared both methods in terms of convergence,
+time required to run the analysis,
+bias in parameter estimates,
+proportion of cases in which each algorithm outperformed the other in terms of parameter accuracy,
+and covariance coverage.
+
+Simulation parameters were chosen to favor `metaplus`:
+We fixed the true number of classes at $K = 2$ with no mean difference and distinct heterogeneity parameters between classes.
+As before, heterogeneity in the first class was fixed at 1,
+and heterogeneity in the second class was either $\tau^2_{\text{ratio}} \in (2, 4, 6)$.
+The number of replications, sample sizes, class size ratios, sampling variances, and number of replications were identical to Study 1,
+yielding 15600 simulation runs.
+
+## Results
+
+```{r tabmetaplus}
+tabmetaplus <- read.csv("metaplus/results/summary_table.csv")
+tab <- tabmetaplus[, c("method", "MAE_mu", "MAE_tau2", "MAE_pi", 
+"cov_mu", "cov_tau2", "cov_pi", "Acc..mu", "Acc..tau2", "Acc..pi"
+)]
+names(tab) <- c("method",
+                                  "$MAE_{\\mu}$", "$MAE_{\\tau^2}$", "$MAE_{\\pi}$", 
+                                  "$CC_{\\mu}$", "$CC_{\\tau^2}$", "$CC_{\\pi}$", 
+                                  "$Acc_{\\mu}$", "$Acc_{\\tau^2}$", "$Acc_{\\pi}$"
+)
+papaja::apa_table(tab[, c(1:4, 8:10, 5:7)], escape = F, format.args = list(na_string = ""), caption = "Results of Study 2", note = "Mean absolute error (MAE), proportion of replications in which each algorithm was more accurate (lower bias) than the other (Acc), and Confidence interval coverage (CC).")
+```
+
+The `metaplus` algorithm converged in all iterations, whereas `remix` converged in $`r worcs::report(tabmetaplus[["converged"]][1]*100, equals = F)`$% of cases.
+The median runtime of `metaplus` analyses was $`r worcs::report(tabmetaplus[["runtime"]][2], equals = F)`$ seconds, compared to `remix`' $`r worcs::report(tabmetaplus[["runtime"]][1], equals = F)`$ seconds.
+Thus, `remix` was about $`r round(tabmetaplus[["runtime"]][2]/tabmetaplus[["runtime"]][1])`$ times faster to run.
+
+As shown in Table \@ref(tab:tabmetaplus), the mean absolute error (bias) of `remix` was lower for the pooled effect $\mu$ and residual heterogeneity $\tau^2$, but slightly higher for the mixing proportion $\pi$, when compared to `metaplus`.
+However, this pattern of results was reversed when examining the mean relative accuracy (which algorithm has lower bias within each iteration);
+here, `remix` performed worse for $\mu$, and better for $\tau^2$ and $\pi$.
+This suggests that, although `metaplus` more often gives the less biased estimate for $\mu$, when it's wrong, it tends to have larger errors than `remix`.
+
+In terms of CI coverage, we see a $1$% difference in coverage for $\mu$, but both algorithms' coverage is below the nominal level of $95$%.
+This issue is exacerbated for `remix`' CI coverage for $\tau^2$ and $\pi$.
+As `metaplus` returned all missing values for the CIs of $\tau^2$ and $\pi$, we cannot evaluate its performance.
+
+## Discussion
+
+Across both simulation studies, random-effects mixture models showed reasonable parameter recovery, both in absolute terms (Study 1) and compared to the implementation of `metaplus` (Study 2).
+Study 1 found estimates of class-specific means and mixing proportions to be approximately unbiased on average,
+while residual heterogeneity was systematically underestimated.
+Bias diminished with larger samples and greater separation between class means, but increased with the number of classes.
+These results suggest that parameter bias depends on class separation.
+Across both studies, CI coverage was below nominal levels for all parameters.
+
+Class enumeration proved particularly challenging. 
+None of the methods under consideration performed well,
+mostly because they underestimated the number of classes.
+Given a trade-off between overfitting and underfitting, the latter is preferable for mixture models, whose parameter counts rapidly increases with the number of classes, which can lead to empirical under-identification when samples are small [@vanlissaRecommendedPracticesLatent2024].
+Nevertheless, here, parsimony clearly comes at the cost of inaccuracy.
+AIC and BIC performed best, followed by PMC and CV.
+ICL performed at near-chance levels.
+Compared to AIC and BIC, PMC and CV have the advantage of offering class enumeration tests,
+but this comes at the expense of a loss of performance.
+These findings suggest that, even when mixture parameters can be estimated with reasonable accuracy, reliably identifying the underlying number of latent classes remains difficult.
+
+Study 2 demonstrated that `remix` offers a computationally efficient and competitive alternative to the existing `metaplus` package.
+Although `metaplus` converged more reliably, `remix` was much faster and achieved comparable or lower bias for the pooled effect and residual heterogeneity.
+When `metaplus` produced less accurate estimates than `remix`, its errors tended to be larger.
+CI coverage of both methods was comparable for the pooled effect sizes, but could not be compared for residual heterogeneity and mixing proportions because `metaplus` did not provide confidence intervals for these parameters.
+
+One possible explanation for the difference in convergence between `remix` and `metaplus`, and the larger absolute errors of `metaplus`, could be that the two implementations might apply different convergence criteria, with `remix` rejecting solutions that `metaplus` considers converged.
+Another contributing factor might be that `metaplus` uses random starting values by default, whereas `remix` uses simulated annealing.
+It is possible to use random starts with `remix` as well, via the function `random_starts()`, which may aid convergence when simulated annealing fails.
+In the present study, we did not use random starts, but the `remix()` function in `metamixture` invokes random starts by default when simulated annealing fails.
+A benchmark test indicates that `remix` is still seven times as fast as `metaplus` when both methods run 20 sets of random starting values, but for most `remix` models, this would be gratuitous.
+
+Overall, results from these two studies indicate that `remix` reliably estimates the parameters of random-effects mixture meta-analysis.
+Moreover, `remix` performs similarly to `metaplus` for special cases covered by both implementations.
+However, statistical inference and reliable class enumeration remain challenging, particularly with small samples and poor class separation.
+
+### Strengths
+
+A strength of the present study is that it introduces the remix method for estimating random-effects mixture models, whose class means and heterogeneity parameters can be freely estimated, constrained to be equal, or fixed at specific values.
+This model is more general than those considered in previous research.
+We implemented this method in the `remix()` function of the `metamixture` package:
+a user-friendly wrapper with similar interface to existing functions like `metafor::rma(yi, vi)` for random-effects meta-analysis [@viechtbauerConductingMetaanalysesMetafor2010] and `tidySEM::mx_profiles()` [@vanlissaRecommendedPracticesLatent2024] for mixture models.
+The backend in `OpenMx` ensures efficient and fast estimation.
+Furthermore, it is a general-purpose structural equation modeling framework,
+which means models can be fully customized (e.g., with equality constraints, starting values, auxiliary variable analyses) within its broader structural equation modeling framework.
+Information-based standard errors and profile-likelihood confidence intervals are available out of the box in `OpenMx`,
+and the estimated models interface with many other packages.
+
+Prior research has discussed mixture meta-analysis in the context of moderator analysis [@zhangDisentanglingEffectSize2022; @graefeApplicationFiniteMixture2025].
+With the `tidySEM` R-package, it is straightforward to conduct such moderator analyses with class as a predictor, or to predict class membership as an outcome,
+or even to conduct auxiliary analyses with a structural equation model of arbitrary complexity with class as a grouping variable.
+When examining class as a predictor of distal outcomes or moderator of auxiliary models, one option is to use the BCH approach [@bolckEstimatingLatentStructure2004].
+It estimates a multi-group structural equation model using assigned class as grouping variable, accounting for classification error by weighting individual cases' contributions.
+A downside of BCH is that its standard errors are not valid.
+When valid standard errors are required, the two-step approach is a suitable alternative (`two_step()`).
+This method first estimates the latent class model, then freezes its parameters and adds the auxiliary structural equation model so that the latter doesn't influence the estimation of the class solution [@bakkTwoStepEstimationModels2018].
+
+In principle, both BCH and the two-step method can be used to identify significant *predictors* of class membership, but only in the univariate case.
+To this end, the candidate predictor is specified as an auxiliary variable. 
+Based on an assumption of causal directionality, a significant omnibus test for between-class differences in the predictor is interpreted as evidence that it predicts class membership.
+A more flexible approach that can explicitly treat class membership as either a predictor an outcome is the pseudo-class method [@wangResidualDiagnosticsGrowth2005].
+It repeatedly draws random samples of class membership based on the individual posterior class probabilities, estimates the auxiliary model for each random sample, and then integrates the results across samples to account for classification uncertainty.
+All of these functions are implemented in `tidySEM`, along with functions for plotting and tabulating results [@vanlissaRecommendedPracticesLatent2024].
+
+### Limitations
+
+A key limitation of the method is that its CI coverage is low.
+This is a known limitation of mixture models, particularly with small sample sizes and model misspecification [@nylundDecidingNumberClasses2007].
+Small samples are common in meta-analysis, and indeed, most sample sizes in our simulation study were below the minimum size that has been considered in studies on regular mixture models.
+Poor class separability may be a contributing cause of poor CI coverage in mixture models in general.
+For mixture meta-analysis in particular, the additional heterogeneity introduced by sampling variance might further diminish coverage.
+This interpretation is bolstered by prior work that reported poor CI coverage for (different versions of) mixture meta-analysis [@negeriBivariateFiniteMixture2025; @beathFiniteMixtureMethod2014].
+Further research into the causes of poor CI coverage in mixture models is needed.
+
+Another limitation is the poor performance of all class enumeration methods. 
+This lack of power for class enumeration has been reported in previous work, especially for imperfect class separation [@teinStatisticalPowerDetect2013].
+While we investigated conditions ranging from poor to very good class separation, performance of all class enumeration methods was subpar across conditions.
+While it is possible that some methods would perform better when classes are perfectly separated, we focused on investigating more realistic scenarios where class membership is somewhat ambiguous.
+Further research specifically focused on class enumeration methods could investigate conditions under which different class enumeration methods perform well.
+
+One further limitation is that our simulation study focused on normal population distributions.
+When true effects follow skewed, heavy-tailed, or other non-normal distributions,
+class performance may deteriorate, as classes attempt to capture distributional idiosyncrasies [@asparouhovMisspecificationWhen2016].
+Future research could examine alternative within-class distributions.
+
+The models presented here assume independent effect sizes,
+but commonly, multiple effect sizes are extracted from each paper,
+yielding a nested data structure.
+Future approaches might examine extensions of the method presented here to dependent effect sizes or multilevel data structures.
+The most straightforward approach would be to include all effect sizes in model estimation, ignoring the dependent structure, and then computing consistent standard errors for inference, using the sandwich estimator [@yuanMetaAnalyticalStructural2016].
+This is implemented as an ad-hoc solution in `sandwich_remix()`, but further research on its performance is needed.
+An alternative approach is to perform clustered bootstrapping, which is trivial to implement using R's `replicate()` function, but computationally expensive.
+
+### Recommendations for applied researchers
+
+For general recommendations regarding mixture modeling, we refer readers to @vanlissaRecommendedPracticesLatent2024.
+Based on the present study, we provide several additional recommendations regarding random-effects mixture models in particular.
+These models can be reliably estimated, even with relatively small samples; they have low parameter bias on average and reasonably good CI coverage, albeit below nominal levels.
+
+Because all class enumeration methods performed poorly,
+random-effects mixture meta-analysis is not very suitable for *exploratory* analysis, where the number of classes is unknown [@vanlissaRecommendedPracticesLatent2024].
+As all class enumeration methods tended to underfit,
+there is little risk of inadvertently selecting an overly complex solution.
+However, failure to identify additional classes should not be interpreted as evidence of absence of distinct subpopulations.
+
+The primary use case for random-effects mixture meta-analysis is *confirmatory* analysis, where distinct subpopulations of true effects are expected based on a theoretical rationale.
+As explained in the introduction, such subpopulations could arise from different research traditions, intervention types, or study populations.
+Practices like p-hacking and publication bias, or the presence of outliers, may also produce distinct components in the observed effect-size distribution.
+Mixture models can capture these distinct sources of heterogeneity that would otherwise be obscured in a conventional random-effects model.
+
+Researchers should be aware of the limitations associated with small samples, which are prevalent in meta-analyses.
+There is no rule of thumb for minimum sample size, as the information available for estimating a mixture model also depends on class proportions, separation, and within-class heterogeneity.
+In our simulation studies, the `remix` method performed acceptably with as few as 20 observations and moderate class separation.
+In general, small samples cause greater parameter bias, lower CI coverage, and poorer class enumeration performance.
+Pragmatically, researchers might favor parsimonious models (e.g., 2 classes), because small samples might not provide enough information to reliably estimate a higher number of classes.
+When drawing conclusions, researchers should exercise caution in generalizing from the sample to the population of all possible effect sizes.
+The safest approach is to consider the results of small sample meta-analysis as descriptive of the published effect sizes in a field, but not necessarily representative of its population distribution.
+
+Researchers should always evaluate model convergence and the stability of the estimated solution.
+Mixture likelihoods can contain multiple local optima, and successful numerical optimization does not guarantee that the global maximum has been identified. Although `remix()` uses simulated annealing and falls back on multiple random starts when the model fails to converge, researchers should inspect convergence diagnostics using `tidySEM::mx_convergence()`, and consider using `random_starts()` with a high number of `nstarts` to assess whether a better global optimum exists.
+Particular caution is warranted when one class has a very small proportion, when heterogeneity estimates approach their boundaries (e.g., due to a single outlier),
+or when parameter estimates change substantially across optimization attempts.
+
+When performing auxiliary analyses (predicting class membership or testing for class differences in some outcome), always account for classification uncertainty.
+Simply assigning studies to their most likely class and treating these assignments as known biases these auxiliary analyses.
+The `tidySEM` package offers several approaches that account for classification uncertainty (`BCH()`, `two_step()`, and `pseudo_class()`).
+The two-step approach is particularly useful for predicting distal outcomes (or auxiliary models) from class membership, as it produces corrected standard errors.
+The pseudo-class method is most flexible when class membership can be either a predictor or an outcome.
+
+## Conclusion
+
+Conventional random-effects models fail to account for discrete sources of heterogeneity.
+There are many common scenarios in meta-analysis where heterogeneity is expected, for example, as a result of different research traditions, questionable research practices, or publication bias.
+In such cases, random-effects mixture meta-analysis is a useful technique to investigate unobserved sources of heterogeneity.
+The present study introduced and evaluated a generalized approach to random-effects mixture modeling that accounts for known sampling variances while allowing class means and heterogeneity parameters to be either freely estimated, constrained across classes, or fixed to known values.
+The `remix()` implementation, with a back-end in `OpenMx`, facilitates user-friendly model specification and customization, offers out-of-the box efficient estimation and information- and likelihood-based inference.
+The estimated models are compatible with other R-packages in the `OpenMx` ecosystem, like `tidySEM`, which can be used for valid analysis of predictors and outcomes of class membership, as well as reporting results in a publication-ready manner.
+Two simulation studies showed that `remix()` performs well, and on par with existing solutions.
+Parameter recovery was unbiased on average and CI coverage was reasonable but below nominal levels.
+However, class enumeration methods performed poorly.
+These findings suggest that random-effects mixture meta-analysis is a useful method for explaining heterogeneity in effect sizes, especially when the number of classes is known based on theoretical or substantive considerations.
+
+\newpage
+
+# References
+
+::: {#refs custom-style="Bibliography"}
+:::

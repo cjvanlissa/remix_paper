@@ -1,0 +1,60 @@
+---
+title: "{title}"
+format:
+  pdf:
+    documentclass: article
+    geometry:
+      - margin=1.5cm
+    include-in-header:
+      text: |
+        \usepackage{longtable}
+        \usepackage{array}
+        \usepackage{booktabs}
+        \usepackage{pdflscape}
+        \usepackage{ragged2e}
+        \setlength{\LTleft}{0pt}
+        \setlength{\LTright}{0pt}
+execute:
+  echo: false
+  warning: false
+  message: false
+params:
+  csv: null
+  caption: null
+---
+
+```{r}
+#| results: asis
+
+library(knitr)
+library(kableExtra)
+
+dat <- read.csv(
+  params$csv,
+  check.names = FALSE
+)
+
+caption <- params$caption
+
+# Print longtable
+cat(
+  kbl(
+    dat,
+    digits = 2,
+    format = "latex",
+    booktabs = TRUE,
+    longtable = TRUE,
+    caption = caption,
+    linesep = "",
+    escape = TRUE
+  ) |>
+    kable_styling(
+      latex_options = c("repeat_header"),
+      font_size = 8,
+      full_width = TRUE,
+      position = "left"
+    )
+)
+
+```
+
