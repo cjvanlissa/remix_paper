@@ -76,15 +76,16 @@ sim_data <- function(k, classes, p_ratio, vi, r2) {
     tau2 = tau2[C]
   )
 }
+
 library(doSNOW)
 library(foreach)
 cl<-makeCluster((parallel::detectCores()-2L)) #change the 2 to your number of CPU cores
 registerDoSNOW(cl)
 
 # Run a random sample of test iterations
-#summarydata <- summarydata[sample.int(nrow(summarydata), 10*length(cl), replace = FALSE), ]
+summarydata <- summarydata[sample.int(nrow(summarydata), length(cl), replace = FALSE), ]
 write(as.character(Sys.time()), file = file.path(outdir, "time.log"), append = TRUE)
-foreach(rownum = 1:nrow(summarydata), .packages = c("mclust", "metamixture", "OpenMx", "tidySEM", "metaplus"), .errorhandling = "remove", .final = function(x) NULL) %dopar% {
+foreach(rownum = 1:nrow(summarydata), .packages = c("metamixture", "OpenMx", "tidySEM", "metaplus"), .errorhandling = "remove", .final = function(x) NULL) %dopar% {
   # rownum <- sample.int(nrow(summarydata), 1L)
   # summarydata[rownum, -ncol(summarydata)]
   assign(".Random.seed", summarydata$seed[[rownum]], envir = .GlobalEnv)
@@ -194,7 +195,7 @@ foreach(rownum = 1:nrow(summarydata), .packages = c("mclust", "metamixture", "Op
     res_mu_mx = res_mu_mx,
     res_tau_mx = res_tau_mx,
     res_pi_mx = res_pi_mx,
-
+    ent_mx = ent,
     ci_mu_mx1 = ci_mu_mx[1],
     ci_mu_mx2 = ci_mu_mx[2],
     ci_tau_mx_wald1 = ci_tau_mx_wald[1],
@@ -249,7 +250,7 @@ saveRDS(merged, file.path(outdir, paste0("sim_results_", Sys.Date(), ".RData")))
 
 library(data.table)
 dat <- readRDS(list.files("metaplus/", pattern = "sim_results", full.names = T))
-
+dat <- as.data.table(dat)
 # Remove duplicated column names
 dat <- dat[, !duplicated(names(dat)), with = FALSE]
 
@@ -304,6 +305,11 @@ for (method in ci_methods) {
   dat[, paste0("cov_", method) := coverage]
   dat[, paste0("width_", method) := width]
 }
+
+prop.table(table(dat$cov_tau_mx_wald))
+prop.table(table(dat$cov_tau_mx_profile))
+dat[, (grep("wald", names(dat), value = TRUE)) := NULL]
+setnames(dat, grep("profile", names(dat), value = TRUE), gsub("_profile", "", grep("profile", names(dat), value = TRUE)))
 # 1. Optimization performance ----------------------------
 
 optimization <- dat[, .(
@@ -409,9 +415,9 @@ write.csv(coverage_table, file.path(outdir, "coverage.csv"), row.names = FALSE)
 summary_table <- data.table(
   method = c("remix", "metaplus"),
 
-  converged = c(
-    mean(dat$conv_mx, na.rm = TRUE),
-    mean(dat$conv_mp, na.rm = TRUE)
+  better_ll = c(
+    optimization$better_mx,
+    optimization$better_mp
   ),
 
   runtime = c(
