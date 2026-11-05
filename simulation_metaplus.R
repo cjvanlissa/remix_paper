@@ -83,7 +83,7 @@ cl<-makeCluster((parallel::detectCores()-2L)) #change the 2 to your number of CP
 registerDoSNOW(cl)
 
 # Run a random sample of test iterations
-summarydata <- summarydata[sample.int(nrow(summarydata), length(cl), replace = FALSE), ]
+#summarydata <- summarydata[sample.int(nrow(summarydata), length(cl), replace = FALSE), ]
 write(as.character(Sys.time()), file = file.path(outdir, "time.log"), append = TRUE)
 foreach(rownum = 1:nrow(summarydata), .packages = c("metamixture", "OpenMx", "tidySEM", "metaplus"), .errorhandling = "remove", .final = function(x) NULL) %dopar% {
   # rownum <- sample.int(nrow(summarydata), 1L)
@@ -245,7 +245,7 @@ setorderv(res, cols = c("rownum"), order=1L, na.last=FALSE)
 merged <- merge(res, tab, by = "rownum", all.x = TRUE, sort = FALSE)
 
 saveRDS(merged, file.path(outdir, paste0("sim_results_", Sys.Date(), ".RData")))
-
+worcs::git_ignore(paste0("!", file.path(outdir, paste0("sim_results_", Sys.Date(), ".RData"))))
 # Analysis
 
 library(data.table)
@@ -339,7 +339,7 @@ optimization <- dat[, .(
 )]
 
 outdir <- "metaplus/results"
-dir.create(outdir)
+#dir.create(outdir)
 
 write.csv(optimization, file.path(outdir, "optimization.csv"), row.names = FALSE)
 
