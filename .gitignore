@@ -14,3 +14,8 @@
 *.rds
 temp.qmd
 .~lock*
+!metaplus/results/sim_results_2026-11-05.RData
+!metaplus/results/optimization.csv
+!metaplus/results/bias.csv
+!metaplus/results/coverage.csv
+!metaplus/results/summary_table.csv
