@@ -13,3 +13,4 @@
 *.RData
 *.rds
 temp.qmd
+.~lock*

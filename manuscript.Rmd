@@ -24,17 +24,17 @@ affiliation:
     institution   : "Tilburg University, dept. Methodology & Statistics"
 
 authornote: |
-  This is a preprint paper, generated from Git Commit # `r substr(gert::git_commit_id(),1,8)`.
-  **Original Publication** This is original unpublished work, not submitted for publication elsewhere.
-  **Competing Interests** The author declares no conflict of interest.
-  **Data availability** All data and results can be exactly reproduced using the code and random seeds archived at [MASKED FOR REVIEW].
+  This is a preprint paper, generated from Git Commit # `r substr(gert::git_commit_id(),1,8)`.  
+  **Original Publication** This is original unpublished work, not submitted for publication elsewhere.  
+  **Competing Interests** The author declares no conflict of interest.  
+  **Data availability** All data and results can be exactly reproduced using the code archived at <https://github.com/cjvanlissa/remix_paper>.  
   **Funding statement** This work was funded by NWO Vidi grant VI.Vidi.231G.017.
 
 abstract: |
-  `r trimws(readr::read_file(here::here('paper/abstract.md')))`
+  `r trimws(readr::read_file('abstract.md'))`
 
 keywords          : "meta-analysis, mixture model, latent class analysis, random effects"
-wordcount         : "`r wordcountaddin::word_count(here::here('paper/manuscript.Rmd'))`"
+wordcount         : "`r wordcountaddin::word_count('manuscript.Rmd')`"
 bibliography      : "metamixture.bib"
 floatsintext      : no
 linenumbers       : yes
@@ -57,19 +57,20 @@ header-includes:
 library("papaja")
 library(ggplot2)
 library(ggpubr)
-r_refs("metamixture.bib")
 set.seed(42)
 knitr::opts_chunk$set(cache.extra = knitr::rand_seed)
 options(knitr.kable.NA = '')
 run_everything = FALSE
-perf_by_con <- read.csv("results/performance_by_condition.csv")
+perf_by_con <- read.csv("results/Supplemental Table 2 - Performance by Condition.csv")
 ```
 
+<!--HIGHLIGHTS-->
 ## Highlights 
 
 - **What is already known:** Random-effects meta-analysis assumes that true effects follow a single normal distribution. This assumption does not hold when there are distinct subgroups of effect sizes, e.g., due to different research traditions, publication bias, or p-hacking.
 - **What is new:** We introduce and validate random-effects mixture meta-analysis, a flexible framework for estimating latent subgroups of effect sizes while accounting for sampling variance.
 - **Potential impact for *Research Synthesis Methods* readers:** With a user-friendly implementation in R, researchers can explore latent clusters of effect sizes, obtain more powerful tests for the overall effect in the presence of outliers, and perform auxiliary analyses with class as an outcome or predictor of study characteristics.
+<!--END HIGHLIGHTS-->
 
 When synthesizing effect sizes originating from different studies, a key question is how to properly account for between-study differences.
 The choice of an appropriate statistical model depends on theoretical assumptions about the sources of heterogeneity.
@@ -366,7 +367,7 @@ We introduce an open-source implementation of univariate random-effects mixture 
 It is implemented in the `remix()` function in the `metamixture` R-package.
 Building on `OpenMx`, this implementation allows further model customization and extension, auxiliary analysis of predictors and moderators of class membership,
 and use of existing tools for reporting and visualization, like `tidySEM`.
-We evaluate the performance of these models in a simulation study, focusing on parameter recovery, confidence interval (CI) coverage, convergence, and the identification of the number of latent classes.
+We evaluate the performance of these models in a simulation study, focusing on parameter recovery, confidence interval (CI) coverage, and the identification of the number of latent classes.
 <!-- Together, these contributions aim to make random-effects mixture meta-analysis more accessible while providing empirical guidance on the conditions under which it can be applied reliably. -->
 
 ### Statistical Model
@@ -595,7 +596,7 @@ knitr::include_graphics("figsim.pdf")
 Overall simulation results are available in Supplemental Table 1, a breakdown by simulation condition in Supplemental Table 2, and the effect size of each simulation condition in Supplemental Table 3.
 The simulation and analysis code were made reproducible with the Workflow for Open Reproducible Code in Science [WORCS, @vanlissaWORCSWorkflowOpen2021] so that
 readers can reproduce the results or adapt the code to examine additional scenarios, or to perform power analysis.
-The research archive is available at [MASKED FOR REVIEW]().
+The research archive is available at <https://github.com/cjvanlissa/remix_paper>.
 
 As a manipulation check for effect size, we examined class separability,
 operationalized using an entropy criterion on a scale from 0 (no class separation) to 1 (perfect separation), with values over $0.80$ indicating good separation [@celeuxEntropyCriterionAssessing1996].
@@ -606,13 +607,13 @@ Our simulation does not cover very poor class separation, nor excellent class se
 ### Bias
 
 ```{r}
-performance <- read.csv("results/performance_overall.csv")
+performance <- read.csv("results/Supplemental Table 1 - Overall Performance.csv")
 perf_means <- performance[grepl("^acc_", performance$outcome), c("outcome","mean", "sd", "p10", "p90"), drop = FALSE]
 perf_means <- perf_means[order(perf_means$mean, decreasing = T), ]
 perf_means$outcome <- toupper(gsub("acc_", "", perf_means$outcome))
 #glue::glue('The best-performing algorithm was {perf_means$outcome[1]} (p {worcs::report(perf_means$mean[1])}), followed by {paste0(perf_means$outcome[-c(1, nrow(perf_means))], " (p", sapply(perf_means$mean[-c(1, nrow(perf_means))],  worcs::report), ")", collapse = ", ")}, and {perf_means$outcome[nrow(perf_means)]} (p {worcs::report(perf_means$mean[nrow(perf_means)])}).')
 
-effect_sizes <- read.csv("results/factor_effect_sizes.csv")
+effect_sizes <- read.csv("results/Supplemental Table 3 - Effect Sizes.csv")
 tab_es_bias <- effect_sizes[match(
   c(paste0("bias_", c("mu", "tau", "pi")),
     paste0("bias_abs_", c("mu", "tau", "pi"))), effect_sizes$outcome), ]
@@ -699,7 +700,7 @@ knitr::include_graphics("results/plot_enum.pdf")
 Since the `metaplus` R-package offers functionality that partly overlaps with the general random-effects mixture meta-analysis framework introduced here, we conducted a second, smaller study to compare the two methods.
 The `metaplus` R-package exclusively estimates 2-class mixture models with a shared mean and distinct heterogeneity parameters.
 This model can also be specified using `remix(classes = 2, mu = "equal", tau2 = "varying")`.
-We compared both methods in terms of convergence,
+We set out to compare both methods in terms of optimization performance,
 time required to run the analysis,
 bias in parameter estimates,
 proportion of cases in which each algorithm outperformed the other in terms of parameter accuracy,
@@ -716,20 +717,36 @@ yielding 15600 simulation runs.
 
 ```{r tabmetaplus}
 tabmetaplus <- read.csv("metaplus/results/summary_table.csv")
-tab <- tabmetaplus[, c("method", "MAE_mu", "MAE_tau2", "MAE_pi", 
-"cov_mu", "cov_tau2", "cov_pi", "Acc..mu", "Acc..tau2", "Acc..pi"
-)]
-names(tab) <- c("method",
-                                  "$MAE_{\\mu}$", "$MAE_{\\tau^2}$", "$MAE_{\\pi}$", 
-                                  "$CC_{\\mu}$", "$CC_{\\tau^2}$", "$CC_{\\pi}$", 
-                                  "$Acc_{\\mu}$", "$Acc_{\\tau^2}$", "$Acc_{\\pi}$"
+cols <- c(
+  method = "method",
+  better_ll = "better_ll",
+  runtime = "runtime",
+  MAE_mu = "$MAE_{\\mu}$",
+  MAE_tau2 = "$MAE_{\\tau^2}$",
+  MAE_pi = "$MAE_{\\pi}$",
+  Acc..mu = "$Acc_{\\mu}$",
+  Acc..tau2 = "$Acc_{\\tau^2}$",
+  Acc..pi = "$Acc_{\\pi}$",
+  cov_mu = "$CC_{\\mu}$",
+  cov_tau2 = "$CC_{\\tau^2}$",
+  cov_pi = "$CC_{\\pi}$"
 )
-papaja::apa_table(tab[, c(1:4, 8:10, 5:7)], escape = F, format.args = list(na_string = ""), caption = "Results of Study 2", note = "Mean absolute error (MAE), proportion of replications in which each algorithm was more accurate (lower bias) than the other (Acc), and Confidence interval coverage (CC).")
+
+# Keep only existing columns
+cols <- cols[names(cols) %in% names(tabmetaplus)]
+
+# Select and rename
+tab <- tabmetaplus[, names(cols)]
+names(tab) <- cols
+papaja::apa_table(tab, escape = F, format.args = list(na_string = ""), caption = "Results of Study 2", note = "Mean absolute error (MAE), proportion of replications in which each algorithm was more accurate (lower bias) than the other (Acc), and Confidence interval coverage (CC).")
 ```
 
-The `metaplus` algorithm converged in all iterations, whereas `remix` converged in $`r worcs::report(tabmetaplus[["converged"]][1]*100, equals = F)`$% of cases.
-The median runtime of `metaplus` analyses was $`r worcs::report(tabmetaplus[["runtime"]][2], equals = F)`$ seconds, compared to `remix`' $`r worcs::report(tabmetaplus[["runtime"]][1], equals = F)`$ seconds.
-Thus, `remix` was about $`r round(tabmetaplus[["runtime"]][2]/tabmetaplus[["runtime"]][1])`$ times faster to run.
+To compare optimization performance, we examined the proportion of cases in which each algorithm found a better solution than the other (lower minus two log-likelihood).
+As shown in Table \@ref(tab:tabmetaplus),
+both algorithms found the same solution in most cases ($`r worcs::report((1-sum(tabmetaplus[["better_ll"]]))*100, equals = F)`$%);
+in cases where their solutions differed, `remix` most often found the better solution.
+On average, `metaplus` analyses took much longer to run than `remix`,
+which was about $`r round(tabmetaplus[["runtime"]][2]/tabmetaplus[["runtime"]][1])`$ times faster than `metaplus`.
 
 As shown in Table \@ref(tab:tabmetaplus), the mean absolute error (bias) of `remix` was lower for the pooled effect $\mu$ and residual heterogeneity $\tau^2$, but slightly higher for the mixing proportion $\pi$, when compared to `metaplus`.
 However, this pattern of results was reversed when examining the mean relative accuracy (which algorithm has lower bias within each iteration);
@@ -761,17 +778,11 @@ but this comes at the expense of a loss of performance.
 These findings suggest that, even when mixture parameters can be estimated with reasonable accuracy, reliably identifying the underlying number of latent classes remains difficult.
 
 Study 2 demonstrated that `remix` offers a computationally efficient and competitive alternative to the existing `metaplus` package.
-Although `metaplus` converged more reliably, `remix` was much faster and achieved comparable or lower bias for the pooled effect and residual heterogeneity.
-When `metaplus` produced less accurate estimates than `remix`, its errors tended to be larger.
+Both algorithms mostly found the same solutions; when their solutions differed, `remix` most often found the better solution.
+Importantly, the `remix` algorithm was much faster to run and achieved comparable or lower bias for the pooled effect and residual heterogeneity.
 CI coverage of both methods was comparable for the pooled effect sizes, but could not be compared for residual heterogeneity and mixing proportions because `metaplus` did not provide confidence intervals for these parameters.
 
-One possible explanation for the difference in convergence between `remix` and `metaplus`, and the larger absolute errors of `metaplus`, could be that the two implementations might apply different convergence criteria, with `remix` rejecting solutions that `metaplus` considers converged.
-Another contributing factor might be that `metaplus` uses random starting values by default, whereas `remix` uses simulated annealing.
-It is possible to use random starts with `remix` as well, via the function `random_starts()`, which may aid convergence when simulated annealing fails.
-In the present study, we did not use random starts, but the `remix()` function in `metamixture` invokes random starts by default when simulated annealing fails.
-A benchmark test indicates that `remix` is still seven times as fast as `metaplus` when both methods run 20 sets of random starting values, but for most `remix` models, this would be gratuitous.
-
-Overall, results from these two studies indicate that `remix` reliably estimates the parameters of random-effects mixture meta-analysis.
+Taken together, results from these two studies indicate that `remix` reliably estimates the parameters of random-effects mixture meta-analysis.
 Moreover, `remix` performs similarly to `metaplus` for special cases covered by both implementations.
 However, statistical inference and reliable class enumeration remain challenging, particularly with small samples and poor class separation.
 
