@@ -18,3 +18,12 @@ temp.qmd
 !metaplus/results/bias.csv
 !metaplus/results/coverage.csv
 !metaplus/results/summary_table.csv
+!simulation/sim_results_2026-11-07.RData
+!simulation/time.log
+!simulation/performance_overall.csv
+!simulation/performance_by_condition.csv
+!simulation/plot_bias.pdf
+!simulation/plot_cov.pdf
+!simulation/plot_cov2.pdf
+!simulation/plot_enum.pdf
+!simulation/factor_effect_sizes.csv

@@ -45,7 +45,7 @@ registerDoSNOW(cl)
 
 # Run a random sample of test iterations
 # summarydata <- summarydata[sample.int(nrow(summarydata), length(cl), replace = FALSE), ]
-f <- list.files("paper/output", full.names = TRUE)
+f <- list.files(outdir, pattern = "^out_[0-9]+\\.rds$", full.names = TRUE)
 file.remove(f)
 saveRDS(summarydata, file = file.path(outdir, "summarydata.RData"))
 write(as.character(Sys.time()), file = file.path(outdir, "time.log"), append = TRUE)
@@ -200,12 +200,6 @@ res <- as.data.table(readRDS(list.files(path = outdir, pattern = "summarydata", 
 
 f <- list.files(outdir, pattern = "^out_[0-9]+\\.rds$", full.names = TRUE)
 tab <- lapply(f, readRDS)
-# tab <- lapply(tab, function(x){
-#   c(unlist(x[1, c("rownum", "true_pi", "valid", "m2ll", "ent", "aic", "bic",
-#     "icl", "pmc", "cv", "time", "res_mu", "res_tau", "res_pi"), drop = T]),
-#     unlist(x[, c("ci_mu",
-#                  "ci_tau_wald", "ci_tau_profile", "ci_pi")]))
-# })
 tab <- as.data.table(do.call(rbind, tab))
 setorderv(tab, cols = c("rownum"), order=1L, na.last=FALSE)
 setorderv(res, cols = c("rownum"), order=1L, na.last=FALSE)

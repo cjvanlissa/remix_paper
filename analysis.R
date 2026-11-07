@@ -13,7 +13,7 @@ outfile <- file.path(outdir, "output.txt")
 f <- list.files(outdir, pattern = "^sim_results_", full.names = TRUE)
 f <- f[which.max(sapply(f, function(x) file.info(x)$mtime))]
 
-dat <- as.data.table(readRDS(file.path(outdir, f)))
+dat <- as.data.table(readRDS(f))
 setnames(dat, make.unique(names(dat)))
 if ('rownum.1' %in% names(dat)) dat[, rownum.1 := NULL]
 dat[, (ignore) := NULL]
@@ -96,6 +96,7 @@ sum_by_factor <- rbindlist(lapply(factors, function(fac) {
       sum_fun(x, vnam)
     }, by = fac]
     setnames(result, fac, "level")
+    result[, level := as.character(level)]
     result[, "outcome" := vnam]
     result[, "factor" := fac]
     result
