@@ -115,12 +115,12 @@ ICL & 0.29 & 0.23 & 0.48 & 0.02 & 0.00 & 0.00\\
 
 \caption{\label{tab:tabmetaplus}Results of Study 2}
 
-\begin{tabular}{llllllllll}
+\begin{tabular}{lllllllllll}
 \toprule
-method & \multicolumn{1}{c}{$MAE_{\mu}$} & \multicolumn{1}{c}{$MAE_{\tau^2}$} & \multicolumn{1}{c}{$MAE_{\pi}$} & \multicolumn{1}{c}{$Acc_{\mu}$} & \multicolumn{1}{c}{$Acc_{\tau^2}$} & \multicolumn{1}{c}{$Acc_{\pi}$} & \multicolumn{1}{c}{$CC_{\mu}$} & \multicolumn{1}{c}{$CC_{\tau^2}$} & \multicolumn{1}{c}{$CC_{\pi}$}\\
+method & \multicolumn{1}{c}{runtime} & \multicolumn{1}{c}{$MAE_{\mu}$} & \multicolumn{1}{c}{$MAE_{\tau^2}$} & \multicolumn{1}{c}{$MAE_{\pi}$} & \multicolumn{1}{c}{$Acc_{\mu}$} & \multicolumn{1}{c}{$Acc_{\tau^2}$} & \multicolumn{1}{c}{$Acc_{\pi}$} & \multicolumn{1}{c}{$CC_{\mu}$} & \multicolumn{1}{c}{$CC_{\tau^2}$} & \multicolumn{1}{c}{$CC_{\pi}$}\\
 \midrule
-remix & 0.15 & 0.45 & 0.24 & 0.34 & 0.54 & 0.51 & 0.91 & 0.69 & 0.74\\
-metaplus & 0.18 & 0.46 & 0.23 & 0.66 & 0.46 & 0.49 & 0.92 &  & \\
+remix & 0.53 & 0.15 & 0.45 & 0.24 & 0.34 & 0.54 & 0.51 & 0.91 & 0.69 & 0.74\\
+metaplus & 14.91 & 0.18 & 0.46 & 0.23 & 0.66 & 0.46 & 0.49 & 0.92 &  & \\
 \bottomrule
 \addlinespace
 \end{tabular}
